@@ -64,7 +64,7 @@ const MARKERS = [
 let _uid = 1;
 const uid       = () => `q${_uid++}`;
 const emptyGrid = () => Array.from({length:3}, () => Array(9).fill(null));
-const ballColor = n  => BALL_COLORS[Math.min(8, Math.floor((n===90?89:n-1)/10))];
+const ballColor = n  => BALL_COLORS[n<=9?0:n>=80?8:Math.floor(n/10)];
 
 const LS_KEY = "quineo_v5";
 const load = () => { try { return JSON.parse(localStorage.getItem(LS_KEY)||"null"); } catch (e2) { return null; } };
@@ -489,13 +489,13 @@ function CardEditor({card, onSave, onCancel, onDelete, lm}) {
   const nums = useMemo(()=>grid.flat().filter(v=>v!==null).sort((a,b)=>a-b),[grid]);
   const activeLine = useMemo(()=>{for(let r=0;r<3;r++){if(grid[r].filter(v=>v!==null).length<5)return r;}return -1;},[grid]);
   const bufNum = parseInt(buf,10);
-  const bufCol = (!isNaN(bufNum)&&bufNum>=1&&bufNum<=90)?bufNum===90?8:Math.floor((bufNum-1)/10):-1;
+  const bufCol = (!isNaN(bufNum)&&bufNum>=1&&bufNum<=90)?bufNum<=9?0:bufNum>=80?8:Math.floor(bufNum/10):-1;
 
   const commitNumber = n => {
     setErr("");
     if (nums.includes(n)) { setErr(`${n} est déjà sur le carton`); return; }
     if (!canPlace(grid,n)) {
-      const col = n===90?8:Math.floor((n-1)/10);
+      const col = n<=9?0:n>=80?8:Math.floor(n/10);
       setErr(`Impossible de placer ${n} : termine d'abord la ligne en cours, sans doublon de colonne sur cette ligne.`);
       return;
     }
@@ -1203,7 +1203,7 @@ function NumberPad({ds, lm, navBg, navBrd, mode, setMode, onToggle, drawn, onAdd
   };
 
   const bufNum = parseInt(buf,10);
-  const bufCol = (!isNaN(bufNum)&&bufNum>=1&&bufNum<=90)?bufNum===90?8:Math.floor((bufNum-1)/10):-1;
+  const bufCol = (!isNaN(bufNum)&&bufNum>=1&&bufNum<=90)?bufNum<=9?0:bufNum>=80?8:Math.floor(bufNum/10):-1;
   const alreadyDrawn = !isNaN(bufNum) && bufNum>=1 && bufNum<=90 && ds.has(bufNum);
 
   const border1 = lm?"#e5e7eb":"rgba(255,255,255,0.1)";

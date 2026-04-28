@@ -737,14 +737,30 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
   const loadFile=f=>{
     if(!f)return;
     setImage(URL.createObjectURL(f));setDone(false);setError(null);setCards([]);
-    setMt(_optionalChain([f, 'access', _5 => _5.type, 'optionalAccess', _6 => _6.startsWith, 'call', _7 => _7("image/")])?f.type:"image/jpeg");
-    const r=new FileReader();r.onload=e=>setB64(e.target.result.split(",")[1]);r.readAsDataURL(f);
+    setMt("image/jpeg");
+    // Compress image before sending — resize to max 1024px, quality 0.7
+    const reader=new FileReader();
+    reader.onload=e=>{
+      const img=new Image();
+      img.onload=()=>{
+        const MAX=1024;
+        let w=img.width, h=img.height;
+        if(w>MAX||h>MAX){ const r=MAX/Math.max(w,h); w=Math.round(w*r); h=Math.round(h*r); }
+        const canvas=document.createElement('canvas');
+        canvas.width=w; canvas.height=h;
+        canvas.getContext('2d').drawImage(img,0,0,w,h);
+        const compressed=canvas.toDataURL('image/jpeg',0.75);
+        setB64(compressed.split(",")[1]);
+      };
+      img.src=e.target.result;
+    };
+    reader.readAsDataURL(f);
   };
   const scan=async()=>{
     if(!b64)return;
     setScanning(true);setError(null);
     try {
-      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
+      const res=await fetch("/api/claude",{method:"POST",
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:4096,
           messages:[{role:"user",content:[

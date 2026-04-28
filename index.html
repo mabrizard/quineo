@@ -500,13 +500,20 @@ function CardEditor({card, defaultColor, onSave, onCancel, onDelete, lm}) {
     React.createElement('div', { style: {position:"fixed",inset:0,background:"rgba(0,0,0,.75)",zIndex:200,display:"flex",
       alignItems:"flex-end",justifyContent:"center",backdropFilter:"blur(6px)"}, onClick: onCancel,}
       , React.createElement('div', { style: {background:bg,border:`2px solid ${brd}`,borderRadius:"22px 22px 0 0",
-        padding:"12px 16px max(28px,env(safe-area-inset-bottom))",
-        width:"100%",maxWidth:600,maxHeight:"94dvh",overflowY:"auto"},
+        width:"100%",maxWidth:600,maxHeight:"96dvh",
+        display:"flex",flexDirection:"column",overflow:"hidden"},
         onClick: e=>e.stopPropagation(),}
-        , React.createElement('div', { style: {width:44,height:5,borderRadius:99,background:lm?"#e5e7eb":"rgba(255,255,255,.15)",margin:"0 auto 14px"},})
-        , React.createElement('div', { style: {fontFamily:"'Fredoka One',cursive",fontSize:19,color:lm?"#1e293b":"#f5c518",marginBottom:14,letterSpacing:.5},}
-          , card?"Modifier le carton":"Nouveau carton"
+
+        /* ── Header fixe ── */
+        , React.createElement('div', { style: {flexShrink:0,padding:"12px 16px 0",borderBottom:`1px solid ${brd}`},}
+          , React.createElement('div', { style: {width:44,height:5,borderRadius:99,background:lm?"#e5e7eb":"rgba(255,255,255,.15)",margin:"0 auto 12px"},})
+          , React.createElement('div', { style: {fontFamily:"'Fredoka One',cursive",fontSize:19,color:lm?"#1e293b":"#f5c518",marginBottom:12,letterSpacing:.5},}
+            , card?"Modifier le carton":"Nouveau carton"
+          )
         )
+
+        /* ── Zone scrollable (infos carton) ── */
+        , React.createElement('div', { style: {flex:1,overflowY:"auto",padding:"12px 16px 8px"},}
 
         , toDel!==null&&(
           React.createElement('div', { style: {background:lm?"#fef2f2":"rgba(239,68,68,.1)",border:`1.5px solid ${lm?"#fca5a5":"rgba(239,68,68,.35)"}`,
@@ -687,7 +694,10 @@ function CardEditor({card, defaultColor, onSave, onCancel, onDelete, lm}) {
           )
         )
 
-        , React.createElement('div', { style: {display:"flex",gap:8,marginTop:4},}
+        )
+        /* ── Boutons d'action fixes en bas ── */
+        , React.createElement('div', { style: {flexShrink:0,padding:`10px 16px max(20px,env(safe-area-inset-bottom))`,
+          borderTop:`1px solid ${brd}`,background:bg,display:"flex",gap:8},}
           , card&&React.createElement('button', { style: {...dangerBs(lm),flex:"0 0 auto",padding:"12px 14px"}, onClick: ()=>onDelete(card.id),}, "🗑")
           , React.createElement('button', { style: ghostBs(lm), onClick: onCancel,}, "Annuler")
           , React.createElement('button', { style: primaryBs, onClick: ()=>onSave({grid,color,label,category:cat}),}

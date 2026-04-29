@@ -904,34 +904,40 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
         body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:8192,
           messages:[{role:"user",content:[
             {type:"image",source:{type:"base64",media_type:mt,data:b64}},
-            {type:"text",text:`Tu es un expert OCR spécialisé dans les cartons de loto quine français (aussi appelés "cartons 90 numéros").
+            {type:"text",text:`Tu es un expert OCR spécialisé dans les cartons de loto quine français (90 numéros).
 
-RÈGLES ABSOLUES DU CARTON DE LOTO FRANÇAIS:
-- Grille: 3 lignes × 9 colonnes
-- Chaque ligne: EXACTEMENT 5 numéros + 4 cases vides (null)
-- Colonnes par dizaine: col0=1-9, col1=10-19, col2=20-29, col3=30-39, col4=40-49, col5=50-59, col6=60-69, col7=70-79, col8=80-90
-- Un numéro N ne peut JAMAIS être dans une autre colonne que la sienne
-- VÉRIFICATION OBLIGATOIRE: après lecture, compte les numéros de chaque ligne (doit être exactement 5)
+═══ RÈGLES STRICTES ═══
+• Grille: 3 lignes × 9 colonnes
+• Chaque ligne: EXACTEMENT 5 numéros + 4 cases vides (null) — ni plus, ni moins
+• Colonnes obligatoires: col0=1-9, col1=10-19, col2=20-29, col3=30-39, col4=40-49, col5=50-59, col6=60-69, col7=70-79, col8=80-90
+• Un numéro appartient TOUJOURS à sa colonne de dizaine. Ex: 22→col2, 73→col7, 81→col8
 
-ORIENTATION DE LA PHOTO:
-- La photo peut être en portrait ou paysage
-- Si la photo est en paysage (tournée de 90°), les lignes du carton apparaissent comme des colonnes visuelles
-- Dans ce cas, adapte ta lecture en conséquence: chaque "colonne visuelle" est une ligne du carton
-- Quelle que soit l'orientation, les règles ci-dessus s'appliquent toujours
+═══ GESTION DE L'ORIENTATION ═══
+ATTENTION: La photo peut être prise en mode paysage (téléphone couché).
+Si les chiffres sont lisibles de côté (rotés de 90°), tu dois:
+1. Identifier les 3 bandes horizontales du carton (même si elles apparaissent verticalement)
+2. Lire chaque bande comme une ligne
+3. Ne jamais lire les décorations du fond, les motifs, ou le texte hors grille comme des numéros
 
-NOMBRE DE CARTONS: ${ps}
-${ps>1?`ORDRE: numérotation colonne par colonne, de haut en bas dans la 1ère colonne, puis haut en bas dans la 2ème colonne, etc.`:""}
+═══ EXEMPLE DE CARTON CORRECT ═══
+Carton "Le Coucher du Soleil" N°0543 - Brizard Jennifer:
+{"grid":[[null,null,22,33,null,59,61,null,81],[8,10,null,36,42,null,null,73,null],[5,19,27,null,null,53,64,null,null]]}
+→ L1: 5 numéros (22,33,59,61,81) ✓  L2: 5 numéros (8,10,36,42,73) ✓  L3: 5 numéros (5,19,27,53,64) ✓
 
-PROCESSUS DE VALIDATION (applique-le pour chaque carton):
-1. Lis tous les numéros visibles
-2. Place chaque numéro dans sa colonne selon sa valeur (1-9→col0, 10-19→col1, etc.)
-3. Vérifie que chaque ligne a exactement 5 numéros - si ce n'est pas le cas, relis
-4. Si un numéro semble dans la mauvaise colonne, c'est une erreur de lecture - corrige-le
+═══ PROCESSUS OBLIGATOIRE ═══
+Pour chaque carton:
+1. Ignore tout ce qui est hors de la grille (fond, décorations, texte, motifs)
+2. Lis uniquement les cases de la grille
+3. Place chaque numéro dans sa colonne correcte selon sa valeur
+4. Compte: chaque ligne doit avoir exactement 5 numéros
+5. Si une ligne en a 6+: tu as lu un élément du fond par erreur → retire le
 
-FORMAT DE RÉPONSE - JSON BRUT UNIQUEMENT, aucun texte avant ou après:
-{"cards":[{"id":0,"grid":[[null,12,null,null,35,null,63,null,82],[3,null,22,31,null,55,null,71,null],[null,17,null,38,null,56,null,null,89]]}]}
+═══ NOMBRE DE CARTONS ═══
+${ps} carton(s) à analyser.
+${ps>1?"Ordre: colonne par colonne (haut→bas col1, puis haut→bas col2, etc.)":""}
 
-Fournis exactement ${ps} carton(s). Chaque grille: tableau de 3 lignes, chaque ligne: tableau de 9 éléments (nombre ou null).`}
+FORMAT: JSON brut uniquement, aucun texte:
+{"cards":[{"id":0,"grid":[[null,12,null,null,35,null,63,null,82],[3,null,22,31,null,55,null,71,null],[null,17,null,38,null,56,null,null,89]]}]}`}
           ]}]})});
       if(!res.ok)throw new Error(`Erreur ${res.status}`);
       const data=await res.json();

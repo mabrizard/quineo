@@ -210,9 +210,16 @@ function cardStatus(grid, ds, mode) {
 function sortCards(cards, ds, mode) {
   return [...cards].sort((a,b)=>{
     const sa=cardStatus(a.grid,ds,mode), sb=cardStatus(b.grid,ds,mode);
-    if (sa.won&&!sb.won) return -1; if (!sa.won&&sb.won) return 1;
-    if (sa.alert&&!sb.alert) return -1; if (!sa.alert&&sb.alert) return 1;
-    return sa.missing - sb.missing;
+    // 1. Gagnant en premier
+    if (sa.won&&!sb.won) return -1;
+    if (!sa.won&&sb.won) return 1;
+    // 2. Alerte (proche de gagner) avant les autres
+    if (sa.alert&&!sb.alert) return -1;
+    if (!sa.alert&&sb.alert) return 1;
+    // 3. Moins de numéros manquants = plus avancé
+    if (sa.missing !== sb.missing) return sa.missing - sb.missing;
+    // 4. À égalité de restants, plus de cochés = plus avancé
+    return sb.hitAll - sa.hitAll;
   });
 }
 
@@ -429,11 +436,11 @@ function LotoCard({card, ds, mode, onToggleActive, onEdit, markerId, markerColor
 }
 
 // ─── CARD LIST ───────────────────────────────────────────────────
-function CardList({cards, ds, mode, onSetMode, onClear, onConfirmClear, onDeleteCards, onToggleActive, onEdit, markerId, markerColor, onAdd, onScan, lm, onToggle}) {
+function CardList({cards, ds, drawnCount, mode, onSetMode, onClear, onConfirmClear, onDeleteCards, onToggleActive, onEdit, markerId, markerColor, onAdd, onScan, lm, onToggle}) {
   const count = cards.length;
   const [density,setDensity] = useState(()=>count<=4?"full":count<=12?"compact":"mini");
   useEffect(()=>setDensity(count<=4?"full":count<=12?"compact":"mini"),[count]);
-  const sorted = useMemo(()=>sortCards(cards,ds,mode),[cards,ds,mode]);
+  const sorted = useMemo(()=>sortCards(cards,ds,mode),[cards,ds,mode,drawnCount]);
 
   return (
     React.createElement('div', { style: {display:"flex",flexDirection:"column",height:"100%"},}
@@ -1765,7 +1772,7 @@ function App() {
             React.createElement(React.Fragment, null
               /* ═══ LISTE DES CARTONS (scroll libre) ═══ */
               , React.createElement('div', { style: {flex:1,overflow:"hidden",display:"flex",flexDirection:"column"},}
-                , React.createElement(CardList, { cards: activeCards, ds: ds, mode: mode,
+                , React.createElement(CardList, { cards: activeCards, ds: ds, drawnCount: game.drawn.length, mode: mode,
                   onSetMode: setMode,
                   onClear: ()=>clearTokens(game.id),
                   onConfirmClear: ()=>showConfirm("Effacer tous les coches ?\nLes cartons sont conservés."),

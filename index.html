@@ -238,9 +238,9 @@ function CardGrid({grid, ds, cardColor, markerId, markerColor, fontSize=15, lm, 
   const marker = MARKERS.find(m=>m.id===markerId)||MARKERS[0];
   return (
     React.createElement('div', { style: {display:"grid",gridTemplateRows:"repeat(3,1fr)",gap:lm?3:4,padding:lm?4:5,
-      background:lm?"#eef2f7":"rgba(0,0,0,.3)"},}
+      background:lm?"#eef2f7":"rgba(0,0,0,.3)",overflow:"visible"},}
       , grid.map((row,r)=>(
-        React.createElement('div', { key: r, style: {display:"grid",gridTemplateColumns:"repeat(9,1fr)",gap:lm?3:4},}
+        React.createElement('div', { key: r, style: {display:"grid",gridTemplateColumns:"repeat(9,1fr)",gap:lm?3:4,overflow:"visible"},}
           , row.map((cell,c)=>{
             const empty=cell===null, drawn=cell!==null&&ds.has(cell), lineOk=wonLines.includes(r);
             let bg,col,brd,shadow="none",tf="none";
@@ -293,7 +293,7 @@ function LotoCard({card, ds, mode, onToggleActive, onEdit, markerId, markerColor
 
   if (density==="mini") {
     return (
-      React.createElement('div', { style: {border:`2px solid ${outlineColor}`,borderRadius:12,overflow:"hidden",opacity:inactive?.35:1,
+      React.createElement('div', { style: {border:`2px solid ${outlineColor}`,borderRadius:12,overflow:"visible",opacity:inactive?.35:1,
         background:lm?"#fff":"linear-gradient(135deg,rgba(30,27,75,.97),rgba(15,12,41,.97))",
         boxShadow:st.won?"0 0 16px rgba(245,197,24,.5)":st.alert?"0 0 12px rgba(255,79,163,.4)":"0 3px 12px rgba(0,0,0,.35)",
         position:"relative"},}
@@ -314,7 +314,7 @@ function LotoCard({card, ds, mode, onToggleActive, onEdit, markerId, markerColor
 
   const fs = density==="compact"?12:15;
   return (
-    React.createElement('div', { style: {border:`2px solid ${outlineColor}`,borderRadius:16,overflow:"hidden",opacity:inactive?.35:1,
+    React.createElement('div', { style: {border:`2px solid ${outlineColor}`,borderRadius:16,overflow:"visible",opacity:inactive?.35:1,
       background:lm?(st.won?"#fffbeb":st.alert?"#fdf2f8":"#fff"):"linear-gradient(135deg,rgba(30,27,75,.97),rgba(15,12,41,.97))",
       marginBottom:density==="compact"?8:16,position:"relative",
       boxShadow:st.won?"0 0 28px rgba(245,197,24,.5),0 6px 24px rgba(0,0,0,.4)":
@@ -383,7 +383,7 @@ function LotoCard({card, ds, mode, onToggleActive, onEdit, markerId, markerColor
 }
 
 // ─── CARD LIST ───────────────────────────────────────────────────
-function CardList({cards, ds, mode, onSetMode, onClear, onToggleActive, onEdit, markerId, markerColor, onAdd, onScan, lm, onToggle}) {
+function CardList({cards, ds, mode, onSetMode, onClear, onConfirmClear, onDeleteCards, onToggleActive, onEdit, markerId, markerColor, onAdd, onScan, lm, onToggle}) {
   const count = cards.length;
   const [density,setDensity] = useState(()=>count<=4?"full":count<=12?"compact":"mini");
   useEffect(()=>setDensity(count<=4?"full":count<=12?"compact":"mini"),[count]);
@@ -423,17 +423,26 @@ function CardList({cards, ds, mode, onSetMode, onClear, onToggleActive, onEdit, 
           , React.createElement('span', { style: {marginLeft:"auto",fontSize:10,color:lm?"#9ca3af":"rgba(255,255,255,.3)",fontWeight:700},}
             , count, " carton" , count>1?"s":""
           )
-          /* Balai */
-          , React.createElement('button', { onClick: ()=>{
-              if(window.confirm("Effacer tous les coches ?\nLes cartons sont conservés.")) onClear();
+          /* Balai + Supprimer */
+          , React.createElement('button', { onClick: async ()=>{
+              if(await onConfirmClear()) onClear();
             },
             title:"Effacer tous les coches",
-            style: {padding:"4px 8px",borderRadius:7,fontSize:16,cursor:"pointer",
-              background:lm?"#fef2f2":"rgba(239,68,68,.1)",
-              border:`1.5px solid ${lm?"#fca5a5":"rgba(239,68,68,.3)"}`,
+            style: {padding:"4px 7px",borderRadius:7,fontSize:15,cursor:"pointer",
+              background:lm?"#fef2f2":"rgba(239,68,68,.08)",
+              border:`1.5px solid ${lm?"#fca5a5":"rgba(239,68,68,.25)"}`,
               color:lm?"#dc2626":"#f87171",lineHeight:1,
               WebkitTapHighlightColor:"transparent"},}
             , "🧹"
+          )
+          , React.createElement('button', { onClick: ()=>onDeleteCards&&onDeleteCards(),
+            title:"Supprimer tous les cartons",
+            style: {padding:"4px 7px",borderRadius:7,fontSize:15,cursor:"pointer",
+              background:lm?"#fef2f2":"rgba(239,68,68,.08)",
+              border:`1.5px solid ${lm?"#fca5a5":"rgba(239,68,68,.25)"}`,
+              color:lm?"#dc2626":"#f87171",lineHeight:1,
+              WebkitTapHighlightColor:"transparent"},}
+            , "🗑"
           )
         )
       )
@@ -1148,7 +1157,7 @@ function StatsModal({drawn, onClose, lm}) {
 
         , [0,1,2,3,4,5,6,7,8].map(col=>(
           React.createElement('div', { key: col, style: {marginBottom:8},}
-            , React.createElement('div', { style: {fontSize:8,fontWeight:800,color:BALL_COLORS[col],marginBottom:3,letterSpacing:.8},}, COL_LABELS[col])
+            , React.createElement('div', { style: {fontSize:8,fontWeight:800,color:lm?"#6b7280":"rgba(255,255,255,.4)",marginBottom:3,letterSpacing:.8},}, COL_LABELS[col])
             , React.createElement('div', { style: {display:"flex",flexWrap:"wrap",gap:3},}
               , Array.from({length:col===0?9:col===8?11:10},(_,i)=>{
                 const n=col===0?i+1:col*10+i;
@@ -1158,23 +1167,23 @@ function StatsModal({drawn, onClose, lm}) {
                   React.createElement('button', { key: n, onClick: ()=>setSel(sel===n?null:n),
                     style: {display:"flex",flexDirection:"column",alignItems:"center",gap:1,padding:"3px 2px",
                       borderRadius:6,cursor:"pointer",minWidth:30,
-                      border:`1.5px solid ${sel===n?"#1e293b":f>0?BALL_COLORS[col]:(lm?"#e5e7eb":"rgba(255,255,255,.08)")}`,
-                      background:f>0?(lm?BALL_COLORS[col]+"22":"rgba(255,255,255,.05)"):(lm?"#f9fafb":"transparent"),
-                      outline:sel===n?`2px solid ${BALL_COLORS[col]}`:"none",
+                      border:`1.5px solid ${sel===n?(lm?"#1e293b":"#fff"):f>0?(lm?"#6b7280":"rgba(255,255,255,.4)"):(lm?"#e5e7eb":"rgba(255,255,255,.08)")}`,
+                      background:f>0?(lm?"#e5e7eb":"rgba(255,255,255,.08)"):(lm?"#f9fafb":"transparent"),
+                      outline:sel===n?`2px solid ${lm?"#374151":"#fff"}`:"none",
                       WebkitTapHighlightColor:"transparent"},}
                     , React.createElement('div', { style: {width:22,height:22,borderRadius:"50%",
-                      background:f>0?BALL_COLORS[col]:(lm?"#e5e7eb":"rgba(255,255,255,.1)"),
+                      background:f>0?(lm?"#374151":"rgba(255,255,255,.75)"):(lm?"#d1d5db":"rgba(255,255,255,.12)"),
                       display:"flex",alignItems:"center",justifyContent:"center",
                       fontFamily:"'Fredoka One',cursive",fontSize:9,position:"relative",
-                      color:f>0?"#fff":(lm?"#9ca3af":"rgba(255,255,255,.3)"),
+                      color:f>0?(lm?"#fff":"#1e293b"):(lm?"#9ca3af":"rgba(255,255,255,.3)"),
                       opacity:f>0?Math.max(0.4,f/maxF):1},}
                       , n
-                      , f>1&&React.createElement('span', { style: {position:"absolute",top:-3,right:-3,background:"#dc2626",color:"#fff",
+                      , f>1&&React.createElement('span', { style: {position:"absolute",top:-3,right:-3,background:lm?"#374151":"rgba(255,255,255,.9)",color:lm?"#fff":"#1e293b",
                         fontSize:6,fontWeight:900,borderRadius:99,padding:"1px 2px",minWidth:11,textAlign:"center",lineHeight:1.3},}, f)
                     )
                     , React.createElement('div', { style: {width:22,height:10,display:"flex",alignItems:"flex-end",justifyContent:"center"},}
                       , React.createElement('div', { style: {width:12,height:`${f>0?Math.round((f/maxF)*100):0}%`,minHeight:f>0?2:0,
-                        background:BALL_COLORS[col],borderRadius:2,opacity:.7},})
+                        background:lm?"#374151":"rgba(255,255,255,.6)",borderRadius:2,opacity:.7},})
                     )
                   )
                 );
@@ -1471,6 +1480,34 @@ function NumberPad({ds, lm, navBg, navBrd, mode, setMode, onToggle, drawn, onAdd
   );
 }
 
+// ─── CUSTOM CONFIRM ──────────────────────────────────────────────
+function useConfirm() {
+  const [state, setState] = useState(null); // {msg, resolve}
+  const confirm = msg => new Promise(resolve => setState({msg, resolve}));
+  const Dialog = state && React.createElement('div', { style: {position:"fixed",inset:0,zIndex:9000,
+      display:"flex",alignItems:"center",justifyContent:"center",
+      background:"rgba(0,0,0,.6)",backdropFilter:"blur(4px)"},}
+    , React.createElement('div', { style: {background:"#fff",borderRadius:18,padding:"28px 24px",
+        maxWidth:320,width:"90%",textAlign:"center",
+        boxShadow:"0 20px 60px rgba(0,0,0,.3)"},}
+      , React.createElement('div', { style: {fontFamily:"'Fredoka One',cursive",fontSize:18,color:"#1e293b",marginBottom:8}}, "🎱 QuineO")
+      , React.createElement('div', { style: {fontSize:14,color:"#374151",lineHeight:1.5,marginBottom:20}}, state.msg)
+      , React.createElement('div', { style: {display:"flex",gap:10},}
+        , React.createElement('button', { onClick: ()=>{state.resolve(false);setState(null);},
+          style: {flex:1,padding:"11px",borderRadius:10,border:"1.5px solid #e5e7eb",
+            background:"#f9fafb",color:"#6b7280",fontFamily:"'Nunito',sans-serif",
+            fontWeight:800,fontSize:14,cursor:"pointer"},}, "Annuler")
+        , React.createElement('button', { onClick: ()=>{state.resolve(true);setState(null);},
+          style: {flex:1,padding:"11px",borderRadius:10,border:"none",
+            background:"linear-gradient(135deg,#ef4444,#dc2626)",color:"#fff",
+            fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:14,cursor:"pointer",
+            boxShadow:"0 4px 12px rgba(239,68,68,.35)"},}, "Confirmer")
+      )
+    )
+  );
+  return {confirm, Dialog};
+}
+
 // ─── BUTTON STYLES ───────────────────────────────────────────────
 const primaryBs = {
   flex:1,padding:"12px 14px",border:"none",borderRadius:11,cursor:"pointer",
@@ -1518,6 +1555,7 @@ function App() {
   const [winnerIds,   setWinnerIds]   = useState(new Set());
   const [flyBall,     setFlyBall]     = useState(null);
   const [showMenu,    setShowMenu]    = useState(false);
+  const {confirm:showConfirm, Dialog:ConfirmDialog} = useConfirm();
   const [lastColor,   setLastColor]   = useState(_optionalChain([saved, 'optionalAccess', _24 => _24.lastColor])||CARD_COLORS[0]);
 
   const game = games.find(g=>g.id===currentId)||games[0];
@@ -1606,6 +1644,7 @@ function App() {
       `)
       , React.createElement('div', { className: "root",}
         , React.createElement(Fireworks, { active: fireworks,})
+        , ConfirmDialog
         , flyBall&&React.createElement(FlyingBall, { number: flyBall.number, color: flyBall.color, onDone: ()=>setFlyBall(null),})
 
         /* TOP BAR */
@@ -1666,6 +1705,8 @@ function App() {
                 , React.createElement(CardList, { cards: activeCards, ds: ds, mode: mode,
                   onSetMode: setMode,
                   onClear: ()=>clearTokens(game.id),
+                  onConfirmClear: ()=>showConfirm("Effacer tous les coches ?\nLes cartons sont conservés."),
+                  onDeleteCards: async ()=>{if(await showConfirm("Supprimer TOUS les cartons ?\nCette action est irréversible.")){upd(game.id,g=>({cards:[],drawn:[]}));setWinnerIds(new Set());}},
                   onToggleActive: toggleActive,
                   onEdit: c=>{setEditCard(c);setShowEditor(true);},
                   markerId: settings.marker, markerColor: settings.markerColor,
@@ -1804,8 +1845,8 @@ function App() {
                   style: {...ghostBs(lm),width:"100%",marginBottom:7,justifyContent:"flex-start",padding:"11px 12px",fontSize:13},}, "🧹 Vider les coches (garder les cartons)"
 
                 )
-                , React.createElement('button', { onClick: ()=>{
-                    if(window.confirm("Supprimer TOUS les cartons ?\nCette action est irréversible."))
+                , React.createElement('button', { onClick: async ()=>{
+                    if(await showConfirm("Supprimer TOUS les cartons ?\nCette action est irréversible."))
                       {upd(game.id,g=>({cards:[],drawn:[]}));setWinnerIds(new Set());}
                   },
                   style: {...dangerBs(lm),width:"100%",justifyContent:"flex-start",padding:"11px 12px",fontSize:13},}, "🗑 Supprimer tous les cartons"

@@ -1111,8 +1111,8 @@ function StatsModal({drawn, onClose, lm}) {
           React.createElement('div', { key: col, style: {marginBottom:8},}
             , React.createElement('div', { style: {fontSize:8,fontWeight:800,color:BALL_COLORS[col],marginBottom:3,letterSpacing:.8},}, COL_LABELS[col])
             , React.createElement('div', { style: {display:"flex",flexWrap:"wrap",gap:3},}
-              , Array.from({length:col===8?11:10},(_,i)=>{
-                const n=col*10+(i+1);
+              , Array.from({length:col===0?9:col===8?11:10},(_,i)=>{
+                const n=col===0?i+1:col*10+i;
                 if(n<1||n>90)return null;
                 const f=freq[n]||0;
                 return(
@@ -1374,8 +1374,8 @@ function NumberPad({ds, lm, navBg, navBrd, mode, setMode, onToggle, drawn, onAdd
       , padMode==="grid"&&React.createElement('div', { style: {marginBottom:7},}
         , [0,1,2,3,4,5,6,7,8].map(col=>(
           React.createElement('div', { key: col, style: {display:"flex",gap:2,marginBottom:2},}
-            , Array.from({length:col===8?11:10},(_,i)=>{
-                const n=col*10+(i+1);
+            , Array.from({length:col===0?9:col===8?11:10},(_,i)=>{
+                const n=col===0?i+1:col*10+i;
                 if(n<1||n>90)return null;
                 const isDrn=ds.has(n);
                 const bc=BALL_COLORS[col];

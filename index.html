@@ -1297,7 +1297,7 @@ function HistoryModal({drawn, onClose, lm}) {
 }
 
 // ─── NUMBER PAD ─────────────────────────────────────────────
-function NumberPad({ds, lm, navBg, navBrd, mode, setMode, onToggle, drawn, onAdd, onScan, onShowHistory}) {
+function NumberPad({ds, lm, navBg, navBrd, mode, setMode, onToggle, drawn, onAdd, onScan, onShowHistory, hasCards}) {
   const [buf, setBuf] = useState("");
   const [flash, setFlash] = useState(null);
   const [padMode, setPadMode] = useState("numpad"); // "numpad" | "grid" | "hidden"
@@ -1492,36 +1492,42 @@ function NumberPad({ds, lm, navBg, navBrd, mode, setMode, onToggle, drawn, onAdd
 
       /* ── Row 3: Actions + toggle pad ── */
       , React.createElement('div', { style: {display:"flex",gap:5,alignItems:"center"},}
+        /* En mode jeu (cartons présents): boutons icône seule, compacts */
+        /* Sans cartons: boutons plein texte pour l'onboarding */
         , React.createElement('button', { onClick: onAdd,
-          style: {flex:1,padding:"10px 12px",borderRadius:10,cursor:"pointer",
+          style: {flex:hasCards?0:1,flexShrink:0,
+            padding:hasCards?"9px 10px":"10px 12px",borderRadius:10,cursor:"pointer",
             border:`2px solid rgba(255,79,163,.5)`,
             background:"rgba(255,79,163,.1)",color:lm?"#be185d":"#ff4fa3",
-            fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:14,
+            fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:hasCards?18:14,
             display:"flex",alignItems:"center",justifyContent:"center",gap:6,
             WebkitTapHighlightColor:"transparent"},}
-          , React.createElement('span', { style: {fontSize:20}}, "✏️")
-          , React.createElement('span', null, "Nouveau carton")
+          , React.createElement('span', null, "✏️")
+          , !hasCards&&React.createElement('span', null, "Nouveau carton")
         )
         , React.createElement('button', { onClick: onScan,
-          style: {flex:1,padding:"10px 12px",borderRadius:10,cursor:"pointer",
+          style: {flex:hasCards?0:1,flexShrink:0,
+            padding:hasCards?"9px 10px":"10px 12px",borderRadius:10,cursor:"pointer",
             border:`2px solid ${lm?"#2563eb":"rgba(0,229,255,.4)"}`,
             background:lm?"#eff6ff":"rgba(0,229,255,.1)",
             color:lm?"#2563eb":"#00e5ff",
-            fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:14,
+            fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:hasCards?18:14,
             display:"flex",alignItems:"center",justifyContent:"center",gap:6,
             WebkitTapHighlightColor:"transparent"},}
-          , React.createElement('span', { style: {fontSize:20}}, "📸")
-          , React.createElement('span', null, "Scanner")
+          , React.createElement('span', null, "📸")
+          , !hasCards&&React.createElement('span', null, "Scanner")
         )
         /* Toggle pad */
         , React.createElement('button', { onClick: ()=>setPadMode(m=>m==="hidden"?"numpad":"hidden"),
           title: padMode==="hidden"?"Afficher le pavé":"Masquer le pavé",
-          style: {padding:"10px 10px",borderRadius:10,cursor:"pointer",fontSize:18,
+          style: {flex:hasCards?1:0,padding:"9px 10px",borderRadius:10,cursor:"pointer",fontSize:14,
+            fontFamily:"'Nunito',sans-serif",fontWeight:800,
             border:`1.5px solid ${lm?"#e5e7eb":"rgba(255,255,255,.15)"}`,
             background:padMode==="hidden"?(lm?"#fef9c3":"rgba(245,197,24,.15)"):(lm?"#f9fafb":"rgba(255,255,255,.05)"),
             color:padMode==="hidden"?(lm?"#d97706":"#f5c518"):(lm?"#6b7280":"rgba(255,255,255,.5)"),
+            display:"flex",alignItems:"center",justifyContent:"center",gap:5,
             WebkitTapHighlightColor:"transparent"},}
-          , padMode==="hidden"?"🔢":"⌨️"
+          , padMode==="hidden"?"🔢 Afficher pavé":"⌨️ Masquer pavé"
         )
       )
     )
@@ -1769,7 +1775,8 @@ function App() {
                 drawn: game.drawn,
                 onAdd: ()=>{setEditCard(null);setShowEditor(true);},
                 onScan: ()=>setShowScanner(true),
-                onShowHistory: ()=>setShowHistory(true),})
+                onShowHistory: ()=>setShowHistory(true),
+                hasCards: activeCards.length>0,})
             )
           )
 

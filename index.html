@@ -69,7 +69,7 @@ const ballColor = n  => BALL_COLORS[n<=9?0:n>=80?8:Math.floor(n/10)];
 const LS_KEY = "quineo_v5";
 const load = () => { try { return JSON.parse(localStorage.getItem(LS_KEY)||"null"); } catch (e2) { return null; } };
 const save = s => { try { localStorage.setItem(LS_KEY, JSON.stringify(s)); } catch (e3) {} };
-const DEF_SETTINGS = { marker:"dot", markerColor:"#16a34a", lightMode:false };
+const DEF_SETTINGS = { marker:"dot", markerColor:"#16a34a", lightMode:true };
 
 function extractJSON(raw) {
   const s = (raw||"").replace(/```json\s*/gi,"").replace(/```\s*/g,"").trim();
@@ -379,7 +379,7 @@ function LotoCard({card, ds, mode, onToggleActive, onEdit, markerId, markerColor
 }
 
 // ─── CARD LIST ───────────────────────────────────────────────────
-function CardList({cards, ds, mode, onToggleActive, onEdit, markerId, markerColor, onAdd, onScan, lm, onToggle}) {
+function CardList({cards, ds, mode, onSetMode, onClear, onToggleActive, onEdit, markerId, markerColor, onAdd, onScan, lm, onToggle}) {
   const count = cards.length;
   const [density,setDensity] = useState(()=>count<=4?"full":count<=12?"compact":"mini");
   useEffect(()=>setDensity(count<=4?"full":count<=12?"compact":"mini"),[count]);
@@ -391,7 +391,21 @@ function CardList({cards, ds, mode, onToggleActive, onEdit, markerId, markerColo
         React.createElement('div', { style: {flexShrink:0,display:"flex",alignItems:"center",gap:5,padding:"5px 10px",
           background:lm?"rgba(255,255,255,.9)":"rgba(0,0,0,.2)",
           borderBottom:`1px solid ${lm?"#e5e7eb":"rgba(255,255,255,.07)"}`},}
-          , React.createElement('span', { style: {fontSize:9,color:lm?"#9ca3af":"rgba(255,255,255,.3)",fontWeight:700},}, "VUE:")
+          /* Mode picker */
+          , [["quine","1 L."],["double","2 L."],["full","Plein"]].map(v=>(
+            React.createElement('button', { key: v[0], onClick: ()=>onSetMode(v[0]),
+              style: {padding:"4px 8px",borderRadius:7,fontSize:11,cursor:"pointer",fontWeight:800,
+                fontFamily:"'Nunito',sans-serif",
+                background:mode===v[0]?(lm?"linear-gradient(135deg,#f59e0b,#ea580c)":"linear-gradient(135deg,#f5c518,#ff6d00)"):"transparent",
+                border:`1.5px solid ${mode===v[0]?"transparent":(lm?"#e5e7eb":"rgba(255,255,255,.12)")}`,
+                color:mode===v[0]?"#000":(lm?"#6b7280":"rgba(255,255,255,.4)"),
+                WebkitTapHighlightColor:"transparent"},}
+              , v[1]
+            )
+          ))
+          /* Separator */
+          , React.createElement('div', { style: {width:1,height:18,background:lm?"#e5e7eb":"rgba(255,255,255,.12)",flexShrink:0},})
+          /* Density */
           , [["full","📋"],["compact","📄"],["mini","⬛"]].map(([d,l])=>(
             React.createElement('button', { key: d, onClick: ()=>setDensity(d),
               style: {padding:"3px 8px",borderRadius:6,fontSize:10,cursor:"pointer",fontWeight:700,
@@ -404,6 +418,16 @@ function CardList({cards, ds, mode, onToggleActive, onEdit, markerId, markerColo
           ))
           , React.createElement('span', { style: {marginLeft:"auto",fontSize:10,color:lm?"#9ca3af":"rgba(255,255,255,.3)",fontWeight:700},}
             , count, " carton" , count>1?"s":""
+          )
+          /* Balai */
+          , React.createElement('button', { onClick: onClear,
+            title:"Effacer tous les coches",
+            style: {padding:"4px 8px",borderRadius:7,fontSize:16,cursor:"pointer",
+              background:lm?"#fef2f2":"rgba(239,68,68,.1)",
+              border:`1.5px solid ${lm?"#fca5a5":"rgba(239,68,68,.3)"}`,
+              color:lm?"#dc2626":"#f87171",lineHeight:1,
+              WebkitTapHighlightColor:"transparent"},}
+            , "🧹"
           )
         )
       )
@@ -1181,7 +1205,8 @@ function HistoryModal({drawn, onClose, lm}) {
 // ─── NUMBER PAD ─────────────────────────────────────────────
 function NumberPad({ds, lm, navBg, navBrd, mode, setMode, onToggle, drawn, onAdd, onScan}) {
   const [buf, setBuf] = useState("");
-  const [flash, setFlash] = useState(null); // {num, ok}
+  const [flash, setFlash] = useState(null);
+  const [padMode, setPadMode] = useState("numpad"); // "numpad" | "grid" | "hidden"
   const [historyOpen, setHistoryOpen] = useState(false);
 
   const lastNum = _nullishCoalesce(drawn[drawn.length-1], () => ( null));
@@ -1301,8 +1326,30 @@ function NumberPad({ds, lm, navBg, navBrd, mode, setMode, onToggle, drawn, onAdd
         )
       )
 
-      /* ── Row 2: Numpad ── */
-      , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:5,marginBottom:7},}
+      /* ── Row 2: toggle Pavé / Grille ── */
+      , padMode!=="hidden"&&React.createElement('div', { style: {display:"flex",gap:4,marginBottom:5},}
+        , React.createElement('button', { onClick: ()=>setPadMode("numpad"),
+          style: {flex:1,padding:"4px 6px",borderRadius:7,cursor:"pointer",fontSize:11,fontWeight:700,
+            fontFamily:"'Nunito',sans-serif",
+            border:`1.5px solid ${padMode==="numpad"?(lm?"#f59e0b":"rgba(245,197,24,.5)"):(lm?"#e5e7eb":"rgba(255,255,255,.12)")}`,
+            background:padMode==="numpad"?(lm?"rgba(245,158,11,.12)":"rgba(245,197,24,.1)"):"transparent",
+            color:padMode==="numpad"?(lm?"#d97706":"#f5c518"):(lm?"#9ca3af":"rgba(255,255,255,.35)"),
+            WebkitTapHighlightColor:"transparent"},}
+          , "⌨️ Pavé"
+        )
+        , React.createElement('button', { onClick: ()=>setPadMode("grid"),
+          style: {flex:1,padding:"4px 6px",borderRadius:7,cursor:"pointer",fontSize:11,fontWeight:700,
+            fontFamily:"'Nunito',sans-serif",
+            border:`1.5px solid ${padMode==="grid"?(lm?"#f59e0b":"rgba(245,197,24,.5)"):(lm?"#e5e7eb":"rgba(255,255,255,.12)")}`,
+            background:padMode==="grid"?(lm?"rgba(245,158,11,.12)":"rgba(245,197,24,.1)"):"transparent",
+            color:padMode==="grid"?(lm?"#d97706":"#f5c518"):(lm?"#9ca3af":"rgba(255,255,255,.35)"),
+            WebkitTapHighlightColor:"transparent"},}
+          , "🔢 Grille 1-90"
+        )
+      )
+
+      /* ── Pavé numérique ── */
+      , padMode==="numpad"&&React.createElement('div', { style: {display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:5,marginBottom:7},}
         , ["1","2","3","4","5","✓","6","7","8","9","0","⌫"].map(k=>(
           React.createElement('button', { key: k, onClick: ()=>handlePad(k),
             onTouchStart: e=>e.currentTarget.style.opacity=".55",
@@ -1323,41 +1370,62 @@ function NumberPad({ds, lm, navBg, navBrd, mode, setMode, onToggle, drawn, onAdd
         ))
       )
 
-      /* ── Row 3: Mode + actions ── */
+      /* ── Grille 1-90 ── */
+      , padMode==="grid"&&React.createElement('div', { style: {marginBottom:7},}
+        , [0,1,2,3,4,5,6,7,8].map(col=>(
+          React.createElement('div', { key: col, style: {display:"flex",gap:2,marginBottom:2},}
+            , Array.from({length:col===8?11:10},(_,i)=>{
+                const n=col*10+(i+1);
+                if(n<1||n>90)return null;
+                const isDrn=ds.has(n);
+                const bc=BALL_COLORS[col];
+                return React.createElement('button', { key: n, onClick: ()=>!isDrn&&commitNum(n),
+                  style: {flex:1,padding:"5px 0",borderRadius:5,cursor:isDrn?"default":"pointer",
+                    fontFamily:"'Fredoka One',cursive",fontSize:11,fontWeight:900,lineHeight:1,
+                    border:`1.5px solid ${isDrn?bc:(lm?"#e5e7eb":"rgba(255,255,255,.15)")}`,
+                    background:isDrn?bc:(lm?"#f9fafb":"rgba(255,255,255,.04)"),
+                    color:isDrn?"#fff":(lm?"#374151":"rgba(255,255,255,.75)"),
+                    opacity:isDrn?.55:1,
+                    WebkitTapHighlightColor:"transparent"},}
+                  , n
+                );
+              })
+          )
+        ))
+      )
+
+      /* ── Row 3: Actions + toggle pad ── */
       , React.createElement('div', { style: {display:"flex",gap:5,alignItems:"center"},}
-        , React.createElement('div', { style: {display:"flex",gap:4,flex:1},}
-          , [["quine","1 ligne"],["double","2 lignes"],["full","Carton plein"]].map(([v,lbl])=>(
-            React.createElement('button', { key: v, onClick: ()=>setMode(v),
-              style: {flex:1,padding:"6px 2px",borderRadius:7,cursor:"pointer",
-                fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:10,
-                border:`2px solid ${mode===v?goldC:"transparent"}`,
-                background:mode===v?"rgba(245,197,24,.1)":"rgba(255,255,255,.04)",
-                color:mode===v?goldC:dimC,
-                WebkitTapHighlightColor:"transparent"},}
-              , lbl
-            )
-          ))
-        )
         , React.createElement('button', { onClick: onAdd,
-          style: {padding:"10px 16px",borderRadius:10,cursor:"pointer",
+          style: {flex:1,padding:"10px 12px",borderRadius:10,cursor:"pointer",
             border:`2px solid rgba(255,79,163,.5)`,
-            background:"rgba(255,79,163,.1)",color:"#ff4fa3",
+            background:"rgba(255,79,163,.1)",color:lm?"#be185d":"#ff4fa3",
             fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:14,
-            display:"flex",alignItems:"center",gap:6,
+            display:"flex",alignItems:"center",justifyContent:"center",gap:6,
             WebkitTapHighlightColor:"transparent"},}
           , React.createElement('span', { style: {fontSize:20}}, "✏️")
           , React.createElement('span', null, "Nouveau carton")
         )
         , React.createElement('button', { onClick: onScan,
-          style: {padding:"10px 16px",borderRadius:10,cursor:"pointer",
+          style: {flex:1,padding:"10px 12px",borderRadius:10,cursor:"pointer",
             border:`2px solid ${lm?"#2563eb":"rgba(0,229,255,.4)"}`,
             background:lm?"#eff6ff":"rgba(0,229,255,.1)",
             color:lm?"#2563eb":"#00e5ff",
             fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:14,
-            display:"flex",alignItems:"center",gap:6,
+            display:"flex",alignItems:"center",justifyContent:"center",gap:6,
             WebkitTapHighlightColor:"transparent"},}
           , React.createElement('span', { style: {fontSize:20}}, "📸")
           , React.createElement('span', null, "Scanner")
+        )
+        /* Toggle pad */
+        , React.createElement('button', { onClick: ()=>setPadMode(m=>m==="hidden"?"numpad":"hidden"),
+          title: padMode==="hidden"?"Afficher le pavé":"Masquer le pavé",
+          style: {padding:"10px 10px",borderRadius:10,cursor:"pointer",fontSize:18,
+            border:`1.5px solid ${lm?"#e5e7eb":"rgba(255,255,255,.15)"}`,
+            background:padMode==="hidden"?(lm?"#fef9c3":"rgba(245,197,24,.15)"):(lm?"#f9fafb":"rgba(255,255,255,.05)"),
+            color:padMode==="hidden"?(lm?"#d97706":"#f5c518"):(lm?"#6b7280":"rgba(255,255,255,.5)"),
+            WebkitTapHighlightColor:"transparent"},}
+          , padMode==="hidden"?"🔢":"⌨️"
         )
       )
     )
@@ -1559,6 +1627,8 @@ function App() {
               /* ═══ LISTE DES CARTONS (scroll libre) ═══ */
               , React.createElement('div', { style: {flex:1,overflow:"hidden",display:"flex",flexDirection:"column"},}
                 , React.createElement(CardList, { cards: activeCards, ds: ds, mode: mode,
+                  onSetMode: setMode,
+                  onClear: ()=>clearTokens(game.id),
                   onToggleActive: toggleActive,
                   onEdit: c=>{setEditCard(c);setShowEditor(true);},
                   markerId: settings.marker, markerColor: settings.markerColor,

@@ -1339,11 +1339,14 @@ function NumberPad({ds, lm, navBg, navBrd, mode, setMode, onToggle, drawn, onAdd
           ))
         )
         , React.createElement('button', { onClick: onAdd,
-          style: {padding:"6px 10px",borderRadius:7,cursor:"pointer",
-            border:`1.5px solid rgba(255,79,163,.4)`,
-            background:"rgba(255,79,163,.08)",color:"#ff4fa3",
-            fontSize:13,WebkitTapHighlightColor:"transparent"},}, "➕"
-
+          style: {padding:"10px 16px",borderRadius:10,cursor:"pointer",
+            border:`2px solid rgba(255,79,163,.5)`,
+            background:"rgba(255,79,163,.1)",color:"#ff4fa3",
+            fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:14,
+            display:"flex",alignItems:"center",gap:6,
+            WebkitTapHighlightColor:"transparent"},}
+          , React.createElement('span', { style: {fontSize:20}}, "✏️")
+          , React.createElement('span', null, "Nouveau carton")
         )
         , React.createElement('button', { onClick: onScan,
           style: {padding:"10px 16px",borderRadius:10,cursor:"pointer",

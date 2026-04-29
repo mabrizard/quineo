@@ -335,21 +335,25 @@ function LotoCard({card, ds, mode, onToggleActive, onEdit, markerId, markerColor
           )
         )
         , React.createElement('div', { style: {display:"flex",alignItems:"center",gap:5,flexShrink:0},}
-          , !st.won&&React.createElement('span', { style: {display:"flex",flexDirection:"column",alignItems:"flex-end",gap:1,padding:"2px 7px",borderRadius:6,
-              background:"rgba(0,0,0,.2)",flexShrink:0},}
-              , st.missing>0&&React.createElement('span', { style: {fontFamily:"'Fredoka One',cursive",fontSize:13,
-                  color:st.alert?"#fbbf24":"rgba(255,255,255,.8)",fontWeight:800,lineHeight:1}},
-                st.alert?"⚠️ ":""
-                , st.missing, " rest."
-              )
-              , st.missing===0&&!st.won&&React.createElement('span', { style: {fontSize:12,color:"#4ade80"}}, "✓")
-              , st.missing>0&&st.missingNums&&st.missingNums.length>0&&React.createElement('span', { style: {
-                  fontFamily:"'Fredoka One',cursive",fontSize:11,
-                  color:st.alert?"#fcd34d":"rgba(255,255,255,.55)",
-                  letterSpacing:.3,lineHeight:1}},
-                "→ ", st.missingNums.join(" · ")
-              )
-            )
+          , !st.won&&(()=>{
+              // Trouver le prochain objectif non atteint
+              const g = !st.goals.quine.won ? st.goals.quine : !st.goals.double.won ? st.goals.double : st.goals.full;
+              const goalLabel = !st.goals.quine.won ? "1 ligne" : !st.goals.double.won ? "2 lignes" : "Plein";
+              return React.createElement('span', { style: {display:"flex",flexDirection:"column",alignItems:"flex-end",gap:1,padding:"2px 7px",borderRadius:6,
+                background:"rgba(0,0,0,.2)",flexShrink:0},}
+                , g.missing>0&&React.createElement('span', { style: {fontFamily:"'Fredoka One',cursive",fontSize:12,
+                    color:g.alert?"#f59e0b":"rgba(255,255,255,.75)",fontWeight:800,lineHeight:1}},
+                  g.alert?"⚠️ ":"", goalLabel, ": ", g.missing, " rest."
+                )
+                , g.missing===0&&!st.won&&React.createElement('span', { style: {fontSize:11,color:"#4ade80"}}, "✓ ", goalLabel)
+                , g.missing>0&&g.missingNums&&g.missingNums.length>0&&React.createElement('span', { style: {
+                    fontFamily:"'Fredoka One',cursive",fontSize:11,
+                    color:g.alert?"#fbbf24":"rgba(255,255,255,.5)",
+                    letterSpacing:.3,lineHeight:1}},
+                  "→ ", g.missingNums.join(" · ")
+                )
+              );
+            })()
           , st.won&&React.createElement('span', { style: {fontSize:17},}, "🏆")
           , card.category==="special"&&(
             React.createElement('button', { onClick: ()=>onToggleActive(card.id),
@@ -420,7 +424,9 @@ function CardList({cards, ds, mode, onSetMode, onClear, onToggleActive, onEdit, 
             , count, " carton" , count>1?"s":""
           )
           /* Balai */
-          , React.createElement('button', { onClick: onClear,
+          , React.createElement('button', { onClick: ()=>{
+              if(window.confirm("Effacer tous les coches ?\nLes cartons sont conservés.")) onClear();
+            },
             title:"Effacer tous les coches",
             style: {padding:"4px 8px",borderRadius:7,fontSize:16,cursor:"pointer",
               background:lm?"#fef2f2":"rgba(239,68,68,.1)",
@@ -431,7 +437,7 @@ function CardList({cards, ds, mode, onSetMode, onClear, onToggleActive, onEdit, 
           )
         )
       )
-      , React.createElement('div', { style: {flex:1,overflowY:"auto",padding:density==="mini"?"8px 8px 220px":"10px 10px 240px"},}
+      , React.createElement('div', { style: {flex:1,overflowY:"auto",padding:density==="mini"?"6px 6px 220px":"8px 8px 240px"},}
         , count===0&&(
           React.createElement('div', { style: {display:"flex",flexDirection:"column",alignItems:"center",padding:"50px 20px",gap:12,textAlign:"center"},}
             , React.createElement('div', { style: {fontSize:52},}, "🎴")
@@ -453,15 +459,17 @@ function CardList({cards, ds, mode, onSetMode, onClear, onToggleActive, onEdit, 
             )
           )
         )
-        , density==="mini"
-          ? React.createElement('div', { style: {display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8},}
-              , sorted.map(c=>React.createElement(LotoCard, { key: c.id, card: c, ds: ds, mode: mode, density: "mini",
+        , density==="full"
+          /* Pleine largeur */
+          ? sorted.map(c=>React.createElement(LotoCard, { key: c.id, card: c, ds: ds, mode: mode, density: "full",
+              onToggleActive: onToggleActive, onEdit: onEdit,
+              markerId: markerId, markerColor: markerColor, lm: lm, onToggle: onToggle,}))
+          /* 2 colonnes côte à côte */
+          : React.createElement('div', { style: {display:"grid",gridTemplateColumns:"1fr 1fr",gap:5},}
+              , sorted.map(c=>React.createElement(LotoCard, { key: c.id, card: c, ds: ds, mode: mode, density: density,
                 onToggleActive: onToggleActive, onEdit: onEdit,
                 markerId: markerId, markerColor: markerColor, lm: lm, onToggle: onToggle,}))
             )
-          : sorted.map(c=>React.createElement(LotoCard, { key: c.id, card: c, ds: ds, mode: mode, density: density,
-              onToggleActive: onToggleActive, onEdit: onEdit,
-              markerId: markerId, markerColor: markerColor, lm: lm, onToggle: onToggle,}))
         
       )
     )
@@ -778,7 +786,21 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
         body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:4096,
           messages:[{role:"user",content:[
             {type:"image",source:{type:"base64",media_type:mt,data:b64}},
-            {type:"text",text:`Analyse ce(s) carton(s) de loto quine français. ${ps} carton(s), 3 lignes × 9 colonnes. Chaque ligne = 5 numéros + 4 cases vides (null). Col 0:1-9, col 1:10-19…col 8:80-90.\nRéponds UNIQUEMENT JSON brut:\n{"cards":[{"id":0,"grid":[[null,12,null,null,35,null,63,null,82],[3,null,22,31,null,55,null,71,null],[null,17,null,38,null,56,null,null,89]]}]}\nFournis exactement ${ps} carton(s).`}
+            {type:"text",text:`Tu es un expert en lecture de cartons de loto quine français.
+Règles strictes du carton de loto français:
+- 3 lignes × 9 colonnes
+- Chaque ligne contient EXACTEMENT 5 numéros et 4 cases vides (null)
+- Colonne 0: numéros 1-9, Colonne 1: 10-19, Colonne 2: 20-29, ..., Colonne 8: 80-90
+- Un numéro ne peut être que dans sa colonne correspondante
+
+Il y a ${ps} carton(s) dans cette image.
+${ps>1?`Les cartons sont numérotés de haut en bas dans la première colonne, puis de haut en bas dans la deuxième colonne (ordre colonne par colonne).`:""}
+
+Analyse ATTENTIVEMENT chaque carton visible (peu importe l'orientation de la photo).
+Réponds UNIQUEMENT avec ce JSON brut sans aucun texte avant ou après:
+{"cards":[{"id":0,"grid":[[null,12,null,null,35,null,63,null,82],[3,null,22,31,null,55,null,71,null],[null,17,null,38,null,56,null,null,89]]}]}
+
+IMPORTANT: Vérifie que chaque ligne a exactement 5 numéros. Fournis exactement ${ps} carton(s).`}
           ]}]})});
       if(!res.ok)throw new Error(`Erreur ${res.status}`);
       const data=await res.json();
@@ -844,13 +866,27 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
           , image&&!scanning&&React.createElement('button', { style: {...primaryBs,flex:2,padding:"9px",fontSize:12}, onClick: scan,}, "✨ Analyser" )
           , scanning&&React.createElement('button', { style: {...primaryBs,flex:2,padding:"9px",fontSize:12,opacity:.7}, disabled: true,}, "⏳ Analyse…" )
         )
-
-        , error&&React.createElement('div', { style: {background:lm?"#fef2f2":"rgba(255,79,163,.07)",border:`1px solid ${lm?"#fca5a5":"rgba(255,79,163,.3)"}`,
+        /* Popup analyse en cours */
+        , scanning&&React.createElement('div', { style: {position:"fixed",inset:0,zIndex:300,
+            display:"flex",alignItems:"center",justifyContent:"center",
+            background:"rgba(0,0,0,.6)",backdropFilter:"blur(4px)"},}
+          , React.createElement('div', { style: {background:lm?"#fff":"#1e1b4b",borderRadius:18,padding:"28px 32px",
+              textAlign:"center",boxShadow:"0 20px 60px rgba(0,0,0,.4)",
+              border:`2px solid ${lm?"#e5e7eb":"rgba(245,197,24,.3)"}`},}
+            , React.createElement('div', { style: {fontSize:42,marginBottom:12,animation:"spin 1s linear infinite",display:"inline-block"},}, "🔍")
+            , React.createElement('div', { style: {fontFamily:"'Fredoka One',cursive",fontSize:20,
+                color:lm?"#1e293b":"#f5c518",marginBottom:6},}, "Analyse en cours…")
+            , React.createElement('div', { style: {fontSize:13,color:lm?"#6b7280":"rgba(255,255,255,.5)"},},
+              "L'IA lit vos cartons, merci de patienter"
+            )
+          )
+        )
+        , !scanning&&error&&React.createElement('div', { style: {background:lm?"#fef2f2":"rgba(255,79,163,.07)",border:`1px solid ${lm?"#fca5a5":"rgba(255,79,163,.3)"}`,
           borderRadius:8,padding:"8px 10px",color:lm?"#dc2626":"#ff4fa3",fontSize:11,marginBottom:10,lineHeight:1.5},}, "⚠️ "
            , error
         )
 
-        , done&&ac&&(
+        , !scanning&&done&&ac&&(
           React.createElement(React.Fragment, null
             , cards.length>1&&(
               React.createElement('div', { style: {display:"flex",gap:5,flexWrap:"wrap",marginBottom:10},}
@@ -921,8 +957,11 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
             )
             , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12},}
               , React.createElement('span', { style: {fontSize:11,color:lm?"#6b7280":"rgba(255,255,255,.4)",fontWeight:600},}, ac.grid.flat().filter(v=>v!==null).length, "/15")
-              , React.createElement('button', { onClick: ()=>setCards(prev=>prev.map((c,i)=>i===ai?{...c,validated:!c.validated}:c)),
-                style: {padding:"6px 14px",borderRadius:8,fontWeight:700,fontSize:12,cursor:"pointer",
+              , React.createElement('button', { onClick: ()=>{
+                  setCards(prev=>prev.map((c,i)=>i===ai?{...c,validated:!ac.validated}:c));
+                  if (!ac.validated && ai<cards.length-1) setTimeout(()=>setAi(i=>i+1),300);
+                },
+                style: {padding:"8px 18px",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",
                   border:`1.5px solid ${ac.validated?(lm?"#16a34a":"#00e676"):(lm?"#f59e0b":"#f5c518")}`,
                   background:ac.validated?(lm?"#dcfce7":"rgba(0,230,118,.08)"):(lm?"#fffbeb":"rgba(245,197,24,.08)"),
                   color:ac.validated?(lm?"#16a34a":"#00e676"):(lm?"#d97706":"#f5c518"),
@@ -1560,6 +1599,7 @@ function App() {
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
         html,body{height:100%;background:${appBg};overscroll-behavior:none;-webkit-tap-highlight-color:transparent;}
         @keyframes logoPulse{0%,100%{opacity:1;}50%{filter:drop-shadow(0 0 14px rgba(245,197,24,.8));}}
+        @keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
         .root{height:100dvh;max-width:600px;margin:0 auto;display:flex;flex-direction:column;background:${appBg};font-family:'Nunito',sans-serif;color:${lm?"#1e293b":"#fff"};overflow:hidden;}
         ${!lm?".root::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 20% 50%,rgba(156,39,176,.1) 0%,transparent 60%),radial-gradient(ellipse at 80% 20%,rgba(0,229,255,.07) 0%,transparent 50%);pointer-events:none;z-index:0;}":""}
         ::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-thumb{background:rgba(0,0,0,.15);border-radius:10px;}
@@ -1591,13 +1631,10 @@ function App() {
                   background:lm?"#fff":"#1e1b4b",border:`1.5px solid ${lm?"#e5e7eb":"rgba(255,255,255,.15)"}`,
                   borderRadius:14,padding:"6px",minWidth:190,
                   boxShadow:lm?"0 8px 24px rgba(0,0,0,.12)":"0 8px 32px rgba(0,0,0,.5)"},}
-                , [["🎴","Cartons",()=>{setTab("cartons");setShowMenu(false);}],
-                   ["📊","Tableau",()=>{setTab("tableau");setShowMenu(false);}],
-                   ["⚙️","Config",()=>{setTab("config");setShowMenu(false);}],
-                   [null,null,null],
-                   ["📜","Historique",()=>{setShowHistory(true);setShowMenu(false);}],
+                , [["📜","Historique des boules",()=>{setShowHistory(true);setShowMenu(false);}],
                    ["📊","Statistiques",()=>{setShowStats(true);setShowMenu(false);}],
-                   ["🎮","Parties",()=>{setShowGameMgr(true);setShowMenu(false);}],
+                   [null,null,null],
+                   ["🎮","Changer de partie",()=>{setShowGameMgr(true);setShowMenu(false);}],
                    ["⚙️","Réglages",()=>{setShowSettings(true);setShowMenu(false);}]
                   ].map(([ic,lb,fn],i)=>ic===null
                     ? React.createElement('div', { key: i, style: {height:1,background:lm?"#e5e7eb":"rgba(255,255,255,.08)",margin:"4px 0"},})
@@ -1767,7 +1804,10 @@ function App() {
                   style: {...ghostBs(lm),width:"100%",marginBottom:7,justifyContent:"flex-start",padding:"11px 12px",fontSize:13},}, "🧹 Vider les coches (garder les cartons)"
 
                 )
-                , React.createElement('button', { onClick: ()=>{upd(game.id,g=>({cards:[],drawn:[]}));setWinnerIds(new Set());},
+                , React.createElement('button', { onClick: ()=>{
+                    if(window.confirm("Supprimer TOUS les cartons ?\nCette action est irréversible."))
+                      {upd(game.id,g=>({cards:[],drawn:[]}));setWinnerIds(new Set());}
+                  },
                   style: {...dangerBs(lm),width:"100%",justifyContent:"flex-start",padding:"11px 12px",fontSize:13},}, "🗑 Supprimer tous les cartons"
 
                 )

@@ -290,7 +290,6 @@ function LotoCard({card, ds, mode, onToggleActive, onEdit, markerId, markerColor
   const headerTxt = st.won?"#000":"#fff";
   const label = card.label||"Carton";
   const handleToggle = useCallback(num=>onToggle&&onToggle(card.id,num),[card.id,onToggle]);
-  const goalItems = [{k:"1 ligne",s:st.goals.quine},{k:"2 lignes",s:st.goals.double},{k:"Carton plein",s:st.goals.full}];
 
   if (density==="mini") {
     return (
@@ -305,7 +304,7 @@ function LotoCard({card, ds, mode, onToggleActive, onEdit, markerId, markerColor
         )
         , React.createElement(CardGrid, { grid: card.grid, ds: ds, cardColor: card.color, markerId: markerId, markerColor: markerColor,
           fontSize: 7, lm: lm, wonLines: wonLines, onToggle: handleToggle,})
-        , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:4,padding:4,background:lm?"#f8fafc":"rgba(255,255,255,.03)"},}, goalItems.map(g=>React.createElement('div', { key: g.k, style: {border:`1px solid ${g.s.won?"#22c55e":g.s.alert?"#f59e0b":"rgba(148,163,184,.35)"}`,borderRadius:8,padding:"4px 5px",background:g.s.won?"rgba(34,197,94,.12)":g.s.alert?"rgba(245,158,11,.12)":"transparent"}}, React.createElement('div', { style: {fontSize:8,fontWeight:800,opacity:.9}}, g.k), React.createElement('div', { style: {fontSize:9,fontWeight:900}}, g.s.won?"Atteint":`${g.s.missing} restant${g.s.missing>1?"s":""}`), g.s.missing===1&&g.s.missingNums&&g.s.missingNums.length>0&&React.createElement('div', { style: {fontSize:8,lineHeight:1.25}}, `Manque ${g.s.missingNums.join(' / ')}`))))
+        
         , React.createElement('div', { style: {height:3,background:"rgba(0,0,0,.2)"},}
           , React.createElement('div', { style: {height:3,background:outlineColor,width:`${pct}%`,transition:"width .4s"},})
         )
@@ -336,17 +335,19 @@ function LotoCard({card, ds, mode, onToggleActive, onEdit, markerId, markerColor
           )
         )
         , React.createElement('div', { style: {display:"flex",alignItems:"center",gap:5,flexShrink:0},}
-          , !st.won&&React.createElement('span', { style: {display:"flex",alignItems:"center",gap:3,padding:"2px 7px",borderRadius:6,
-              background:"rgba(0,0,0,.2)",color:st.alert?"#fbbf24":"rgba(255,255,255,.7)",
-              fontSize:11,fontWeight:800,flexShrink:0},}
-              , st.missing>0&&React.createElement('span', { style: {fontFamily:"'Fredoka One',cursive",fontSize:13}},
+          , !st.won&&React.createElement('span', { style: {display:"flex",flexDirection:"column",alignItems:"flex-end",gap:1,padding:"2px 7px",borderRadius:6,
+              background:"rgba(0,0,0,.2)",flexShrink:0},}
+              , st.missing>0&&React.createElement('span', { style: {fontFamily:"'Fredoka One',cursive",fontSize:13,
+                  color:st.alert?"#fbbf24":"rgba(255,255,255,.8)",fontWeight:800,lineHeight:1}},
                 st.alert?"⚠️ ":""
-                , st.missing
-                , " rest."
+                , st.missing, " rest."
               )
-              , st.missing===0&&!st.won&&"✓"
-              , st.alert&&st.missingNums&&st.missingNums.length>0&&React.createElement('span', { style: {fontFamily:"'Fredoka One',cursive",fontSize:12,marginLeft:2}},
-                "→", st.missingNums.join("·")
+              , st.missing===0&&!st.won&&React.createElement('span', { style: {fontSize:12,color:"#4ade80"}}, "✓")
+              , st.missing>0&&st.missingNums&&st.missingNums.length>0&&React.createElement('span', { style: {
+                  fontFamily:"'Fredoka One',cursive",fontSize:11,
+                  color:st.alert?"#fcd34d":"rgba(255,255,255,.55)",
+                  letterSpacing:.3,lineHeight:1}},
+                "→ ", st.missingNums.join(" · ")
               )
             )
           , st.won&&React.createElement('span', { style: {fontSize:17},}, "🏆")
@@ -761,10 +762,10 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
       const raw=_optionalChain([data, 'access', _8 => _8.content, 'optionalAccess', _9 => _9.find, 'call', _10 => _10(b=>b.type==="text"), 'optionalAccess', _11 => _11.text])||"";
       const parsed=extractJSON(raw);
       if(!_optionalChain([parsed, 'access', _12 => _12.cards, 'optionalAccess', _13 => _13.length]))throw new Error("Aucun carton détecté");
-      setCards(parsed.cards.map((c,i)=>({id:i,validated:false,
+      setCards(parsed.cards.map((c,i)=>({id:i,validated:false,label:"",
         grid:(c.grid||[]).map(row=>Array.isArray(row)?row.map(v=>v==null?null:Number(v)):Array(9).fill(null))})));
       setDone(true);setAi(0);
-    } catch(e){setError(e.message);setDone(true);setCards(Array.from({length:ps},(_,i)=>({id:i,grid:emptyGrid(),validated:false})));}
+    } catch(e){setError(e.message);setDone(true);setCards(Array.from({length:ps},(_,i)=>({id:i,grid:emptyGrid(),validated:false,label:""})));}
     finally{setScanning(false);}
   };
   const commitEdit=()=>{
@@ -874,6 +875,24 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
                     })
                   ])
                 )))
+              )
+            )
+            /* Nom du carton */
+            , React.createElement('div', { style: {marginBottom:10},}
+              , React.createElement('div', { style: {fontSize:9,color:lm?"#9ca3af":"rgba(255,255,255,.35)",fontWeight:700,
+                  letterSpacing:1.5,textTransform:"uppercase",marginBottom:4},}, "Nom du carton")
+              , React.createElement('input', { 
+                  type:"text",
+                  placeholder:`Carton ${ai+1}`,
+                  value:ac.label,
+                  onChange:e=>setCards(prev=>prev.map((c,i)=>i===ai?{...c,label:e.target.value}:c)),
+                  maxLength:20,
+                  style:{display:"block",width:"100%",
+                    background:lm?"#f9fafb":"rgba(255,255,255,.06)",
+                    border:`2px solid ${lm?"#e5e7eb":"rgba(255,255,255,.15)"}`,
+                    borderRadius:9,color:lm?"#1e293b":"#fff",
+                    fontFamily:"'Nunito',sans-serif",fontSize:16,fontWeight:700,
+                    padding:"9px 12px",outline:"none"},}
               )
             )
             , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12},}
@@ -1327,11 +1346,15 @@ function NumberPad({ds, lm, navBg, navBrd, mode, setMode, onToggle, drawn, onAdd
 
         )
         , React.createElement('button', { onClick: onScan,
-          style: {padding:"6px 10px",borderRadius:7,cursor:"pointer",
-            border:`1.5px solid ${lm?"#e5e7eb":"rgba(255,255,255,.12)"}`,
-            background:lm?"#f9fafb":"rgba(255,255,255,.04)",color:lm?"#475569":"rgba(255,255,255,.6)",
-            fontSize:13,WebkitTapHighlightColor:"transparent"},}, "📸"
-
+          style: {padding:"10px 16px",borderRadius:10,cursor:"pointer",
+            border:`2px solid ${lm?"#2563eb":"rgba(0,229,255,.4)"}`,
+            background:lm?"#eff6ff":"rgba(0,229,255,.1)",
+            color:lm?"#2563eb":"#00e5ff",
+            fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:14,
+            display:"flex",alignItems:"center",gap:6,
+            WebkitTapHighlightColor:"transparent"},}
+          , React.createElement('span', { style: {fontSize:20}}, "📸")
+          , React.createElement('span', null, "Scanner")
         )
       )
     )
@@ -1443,7 +1466,7 @@ function App() {
   const saveCard    = data=>{ upd(game.id,g=>({cards:g.cards.map(c=>c.id===editCard.id?{...c,...data}:c)})); setLastColor(data.color); setEditCard(null);setShowEditor(false); };
   const delCard     = id  =>{ upd(game.id,g=>({cards:g.cards.filter(c=>c.id!==id)})); setEditCard(null);setShowEditor(false); };
   const toggleActive= id =>  upd(game.id,g=>({cards:g.cards.map(c=>c.id===id?{...c,active:!c.active}:c)}));
-  const importScanned=sc =>{ const nc=sc.map((c,i)=>({id:uid(),grid:c.grid,color:CARD_COLORS[i%CARD_COLORS.length],label:`Scan ${i+1}`,category:"normal",active:true})); upd(game.id,g=>({cards:[...g.cards,...nc]})); setShowScanner(false); };
+  const importScanned=sc =>{ const nc=sc.map((c,i)=>({id:uid(),grid:c.grid,color:CARD_COLORS[i%CARD_COLORS.length],label:c.label||`Scan ${i+1}`,category:"normal",active:true})); upd(game.id,g=>({cards:[...g.cards,...nc]})); setShowScanner(false); };
   const newGame     = name=>{ const g=mkGame(name);setGames(p=>[...p,g]);setCurrentId(g.id);setWinnerIds(new Set()); };
   const delGame     = id  =>{ setGames(p=>{const ng=p.filter(g=>g.id!==id);if(currentId===id&&ng.length)setCurrentId(ng[0].id);return ng.length?ng:[mkGame("Soirée loto")];}); };
   const clearTokens = id  =>{ upd(id,()=>({drawn:[]}));setWinnerIds(new Set()); App._goalSig = null; };
@@ -1497,11 +1520,17 @@ function App() {
                   background:lm?"#fff":"#1e1b4b",border:`1.5px solid ${lm?"#e5e7eb":"rgba(255,255,255,.15)"}`,
                   borderRadius:14,padding:"6px",minWidth:190,
                   boxShadow:lm?"0 8px 24px rgba(0,0,0,.12)":"0 8px 32px rgba(0,0,0,.5)"},}
-                , [["📜","Historique",()=>{setShowHistory(true);setShowMenu(false);}],
+                , [["🎴","Cartons",()=>{setTab("cartons");setShowMenu(false);}],
+                   ["📊","Tableau",()=>{setTab("tableau");setShowMenu(false);}],
+                   ["⚙️","Config",()=>{setTab("config");setShowMenu(false);}],
+                   [null,null,null],
+                   ["📜","Historique",()=>{setShowHistory(true);setShowMenu(false);}],
                    ["📊","Statistiques",()=>{setShowStats(true);setShowMenu(false);}],
                    ["🎮","Parties",()=>{setShowGameMgr(true);setShowMenu(false);}],
                    ["⚙️","Réglages",()=>{setShowSettings(true);setShowMenu(false);}]
-                  ].map(([ic,lb,fn])=>
+                  ].map(([ic,lb,fn],i)=>ic===null
+                    ? React.createElement('div', { key: i, style: {height:1,background:lm?"#e5e7eb":"rgba(255,255,255,.08)",margin:"4px 0"},})
+                    :
                     React.createElement('button', { key: lb, onClick: fn,
                       style: {display:"flex",alignItems:"center",gap:10,width:"100%",padding:"10px 12px",
                         borderRadius:9,border:"none",background:"transparent",cursor:"pointer",
@@ -1516,21 +1545,7 @@ function App() {
           )
         )
 
-        /* TABS */
-        , React.createElement('div', { style: {position:"relative",zIndex:10,flexShrink:0,display:"flex",gap:7,
-          padding:"8px 12px 0",background:navBg,borderBottom:`1px solid ${navBrd}`},}
-          , [["cartons","🎴 Cartons"],["tableau","📊 Tableau"],["config","⚙️ Config"]].map(([id,label])=>(
-            React.createElement('button', { key: id, onClick: ()=>setTab(id),
-              style: {flex:1,padding:"8px 0",borderRadius:"9px 9px 0 0",cursor:"pointer",
-                fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:11,border:"none",
-                background:tab===id?(lm?"linear-gradient(135deg,#f59e0b,#ea580c)":"linear-gradient(135deg,#f5c518,#ff6d00)"):"transparent",
-                color:tab===id?"#000":(lm?"#6b7280":"rgba(255,255,255,.45)"),
-                boxShadow:tab===id?"0 -2px 12px rgba(245,197,24,.2)":"none",
-                WebkitTapHighlightColor:"transparent"},}
-              , label
-            )
-          ))
-        )
+
 
         /* CONTENT */
         , React.createElement('div', { style: {position:"relative",zIndex:5,flex:1,overflow:"hidden",display:"flex",flexDirection:"column"},}

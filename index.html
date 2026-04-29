@@ -499,204 +499,201 @@ function CardEditor({card, defaultColor, onSave, onCancel, onDelete, lm}) {
   return (
     React.createElement('div', { style: {position:"fixed",inset:0,background:"rgba(0,0,0,.75)",zIndex:200,display:"flex",
       alignItems:"flex-end",justifyContent:"center",backdropFilter:"blur(6px)"}, onClick: onCancel,}
+
       , React.createElement('div', { style: {background:bg,border:`2px solid ${brd}`,borderRadius:"22px 22px 0 0",
         width:"100%",maxWidth:600,maxHeight:"96dvh",
         display:"flex",flexDirection:"column",overflow:"hidden"},
         onClick: e=>e.stopPropagation(),}
 
         /* ── Header fixe ── */
-        , React.createElement('div', { style: {flexShrink:0,padding:"12px 16px 0",borderBottom:`1px solid ${brd}`},}
-          , React.createElement('div', { style: {width:44,height:5,borderRadius:99,background:lm?"#e5e7eb":"rgba(255,255,255,.15)",margin:"0 auto 12px"},})
-          , React.createElement('div', { style: {fontFamily:"'Fredoka One',cursive",fontSize:19,color:lm?"#1e293b":"#f5c518",marginBottom:12,letterSpacing:.5},}
+        , React.createElement('div', { style: {flexShrink:0,padding:"10px 16px 10px",
+          borderBottom:`1px solid ${brd}`},}
+          , React.createElement('div', { style: {width:44,height:5,borderRadius:99,background:lm?"#e5e7eb":"rgba(255,255,255,.15)",margin:"0 auto 10px"},})
+          , React.createElement('div', { style: {fontFamily:"'Fredoka One',cursive",fontSize:19,color:lm?"#1e293b":"#f5c518",letterSpacing:.5},}
             , card?"Modifier le carton":"Nouveau carton"
           )
         )
 
-        /* ── Zone scrollable (infos carton) ── */
-        , React.createElement('div', { style: {flex:1,overflowY:"auto",padding:"12px 16px 8px"},}
+        /* ── Zone scrollable ── */
+        , React.createElement('div', { style: {flex:1,overflowY:"auto",padding:"10px 16px 8px"},}
 
-        , toDel!==null&&(
-          React.createElement('div', { style: {background:lm?"#fef2f2":"rgba(239,68,68,.1)",border:`1.5px solid ${lm?"#fca5a5":"rgba(239,68,68,.35)"}`,
-            borderRadius:10,padding:"10px 12px",marginBottom:12},}
-            , React.createElement('div', { style: {fontWeight:800,fontSize:13,color:lm?"#1e293b":"#fff",marginBottom:8},}, "Supprimer " , toDel, " ?" )
-            , React.createElement('div', { style: {display:"flex",gap:8},}
-              , React.createElement('button', { onClick: ()=>setToDel(null), style: ghostBs(lm),}, "Annuler")
-              , React.createElement('button', { onClick: ()=>{setGrid(g=>removeNumber(g,toDel));setToDel(null);}, style: dangerBs(lm),}, "Supprimer")
-            )
-          )
-        )
-
-        /* ══════════════════════════════════════════
-            1. SAISIE + GRILLE (sticky en haut, toujours visible)
-           ══════════════════════════════════════════ */
-
-        /* Indicateurs de ligne */
-        , React.createElement('div', { style: {display:"flex",gap:5,marginBottom:7},}
-          , [0,1,2].map(r=>{
-            const cnt=grid[r].filter(v=>v!==null).length, isCur=r===activeLine, isDone=cnt===5;
-            return (
-              React.createElement('div', { key: r, style: {flex:1,padding:"5px",borderRadius:6,textAlign:"center",
-                border:`2px solid ${isDone?(lm?"#16a34a":"#00e676"):isCur?(lm?"#f59e0b":"#f5c518"):(lm?"#e5e7eb":"rgba(255,255,255,.08)")}`,
-                background:isDone?(lm?"#dcfce7":"rgba(0,230,118,.08)"):isCur?(lm?"#fffbeb":"rgba(245,197,24,.07)"):(lm?"#f9fafb":"rgba(255,255,255,.02)")},}
-                , React.createElement('div', { style: {fontSize:8,fontWeight:800,textTransform:"uppercase",letterSpacing:.8,
-                  color:isDone?(lm?"#16a34a":"#00e676"):isCur?(lm?"#d97706":"#f5c518"):(lm?"#9ca3af":"rgba(255,255,255,.22)")},}
-                  , isDone?"✓ L."+(r+1):isCur?"→ L."+(r+1):"L."+(r+1)
-                )
-                , React.createElement('div', { style: {fontSize:14,fontWeight:900,fontFamily:"'Fredoka One',cursive",
-                  color:isDone?(lm?"#16a34a":"#00e676"):isCur?(lm?"#1e293b":"#fff"):(lm?"#cbd5e1":"rgba(255,255,255,.2)")},}
-                  , cnt, "/5"
-                )
+          , toDel!==null&&(
+            React.createElement('div', { style: {background:lm?"#fef2f2":"rgba(239,68,68,.1)",border:`1.5px solid ${lm?"#fca5a5":"rgba(239,68,68,.35)"}`,
+              borderRadius:10,padding:"10px 12px",marginBottom:12},}
+              , React.createElement('div', { style: {fontWeight:800,fontSize:13,color:lm?"#1e293b":"#fff",marginBottom:8},}, "Supprimer " , toDel, " ?" )
+              , React.createElement('div', { style: {display:"flex",gap:8},}
+                , React.createElement('button', { onClick: ()=>setToDel(null), style: ghostBs(lm),}, "Annuler")
+                , React.createElement('button', { onClick: ()=>{setGrid(g=>removeNumber(g,toDel));setToDel(null);}, style: dangerBs(lm),}, "Supprimer")
               )
-            );
-          })
-        )
-
-        /* Buffer + col hint */
-        , React.createElement('div', { style: {display:"flex",gap:8,marginBottom:6,alignItems:"center"},}
-          , React.createElement('div', { style: {flex:1,textAlign:"center",fontFamily:"'Fredoka One',cursive",fontSize:38,letterSpacing:4,lineHeight:1,
-            padding:"8px 0",borderRadius:11,
-            border:`3px solid ${buf?(lm?"#2563eb":"#f5c518"):(lm?"#e5e7eb":"rgba(255,255,255,.1)")}`,
-            background:buf?(lm?"#eff6ff":"rgba(245,197,24,.07)"):(lm?"#f9fafb":"rgba(255,255,255,.02)"),
-            color:buf?(lm?"#1e293b":"#f5c518"):(lm?"#cbd5e1":"rgba(255,255,255,.18)")},}
-            , buf||"—"
-          )
-          , bufCol>=0&&(
-            React.createElement('div', { style: {fontSize:9,color:lm?"#2563eb":"#00e5ff",fontWeight:700,textAlign:"center",minWidth:48,lineHeight:1.4},}, "Colonne"
-              , React.createElement('br', null), React.createElement('span', { style: {fontFamily:"'Fredoka One',cursive",fontSize:13},}, COL_LABELS[bufCol])
             )
           )
-        )
-        , err&&React.createElement('div', { style: {fontSize:11,color:lm?"#dc2626":"#ff4fa3",fontWeight:700,marginBottom:6,
-          padding:"4px 8px",background:lm?"#fef2f2":"rgba(255,79,163,.07)",
-          border:`1px solid ${lm?"#fca5a5":"rgba(255,79,163,.25)"}`,borderRadius:6},}, err)
 
-        /* Numpad */
-        , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:5,marginBottom:10},}
-          , ["1","2","3","4","5","6","7","8","9","⌫","0","✓"].map(k=>(
-            React.createElement('button', { key: k, onClick: ()=>handlePad(k),
-              onTouchStart: e=>e.currentTarget.style.opacity=".6",
-              onTouchEnd: e=>e.currentTarget.style.opacity="1",
-              style: {padding:"14px 0",borderRadius:9,cursor:"pointer",fontWeight:700,
-                fontFamily:"'Fredoka One',cursive",fontSize:k==="✓"||k==="⌫"?17:20,
-                WebkitTapHighlightColor:"transparent",transition:"opacity .1s",
-                border:k==="✓"?"none":k==="⌫"?`1.5px solid ${lm?"#fca5a5":"rgba(255,79,163,.35)"}`:`1.5px solid ${lm?"#e5e7eb":"rgba(255,255,255,.1)"}`,
-                background:k==="✓"?"linear-gradient(135deg,#ff4fa3,#9c27b0)":k==="⌫"?(lm?"#fef2f2":"rgba(255,79,163,.07)"):(lm?"#f9fafb":"rgba(255,255,255,.04)"),
-                color:k==="✓"?"#fff":k==="⌫"?(lm?"#dc2626":"#ff4fa3"):(lm?"#1e293b":"rgba(255,255,255,.85)"),
-                boxShadow:k==="✓"?"0 3px 12px rgba(255,79,163,.4)":"none"},}
-              , k
+
+
+          /* Chips */
+          , nums.length>0&&(
+            React.createElement('div', { style: {marginBottom:10},}
+              , React.createElement('div', { style: {fontSize:9,color:lm?"#9ca3af":"rgba(255,255,255,.28)",fontWeight:700,marginBottom:4,textTransform:"uppercase",letterSpacing:1},}
+                , nums.length, "/15 — toucher pour supprimer"
+              )
+              , React.createElement('div', { style: {display:"flex",flexWrap:"wrap",gap:5,padding:"8px",
+                background:lm?"#f9fafb":"rgba(255,255,255,.02)",
+                borderRadius:8,border:`1px solid ${lm?"#e5e7eb":"rgba(255,255,255,.06)"}`},}
+                , nums.map(n=>(
+                  React.createElement('button', { key: n, onClick: ()=>setToDel(n),
+                    style: {width:32,height:32,borderRadius:"50%",background:color,color:"#fff",
+                      fontSize:11,fontWeight:800,border:"none",cursor:"pointer",position:"relative",
+                      boxShadow:`0 2px 6px ${color}55`,WebkitTapHighlightColor:"transparent"},}
+                    , n
+                    , React.createElement('span', { style: {position:"absolute",top:-3,right:-3,width:12,height:12,borderRadius:"50%",
+                      background:"#ef4444",border:`1.5px solid ${bg}`,
+                      display:"flex",alignItems:"center",justifyContent:"center",
+                      fontSize:7,color:"#fff",fontWeight:900,lineHeight:1},}, "×")
+                  )
+                ))
+              )
             )
-          ))
-        )
+          )
 
-        /* Grille aperçu — juste sous le numpad */
-        , React.createElement('div', { style: {overflowX:"auto",marginBottom:14,borderRadius:10,overflow:"hidden",
-          border:`2.5px solid ${color}`,boxShadow:lm?"0 2px 10px rgba(0,0,0,.1)":"0 4px 20px rgba(0,0,0,.4)"},}
-          , React.createElement('table', { style: {width:"100%",borderCollapse:"collapse",minWidth:260,tableLayout:"fixed"},}
-            , React.createElement('colgroup', null, Array(9).fill(0).map((_,i)=>React.createElement('col', { key: i, style: {width:`${100/9}%`},})))
-            , React.createElement('tbody', null, grid.map((row,r)=>{
-              const isCur=r===activeLine,isDone=row.filter(v=>v!==null).length===5;
+          /* Séparateur */
+          , React.createElement('div', { style: {height:1,background:lm?"#e5e7eb":"rgba(255,255,255,.08)",margin:"4px 0 12px"},})
+
+          /* Identifiant */
+          , React.createElement('div', { style: {fontSize:10,color:lbl,letterSpacing:1.5,textTransform:"uppercase",marginBottom:5,fontWeight:700},}, "Identifiant")
+          , React.createElement('input', { style: {display:"block",width:"100%",background:inBg,border:`2px solid ${inBrd}`,borderRadius:9,
+            color:inCol,fontFamily:"'Nunito',sans-serif",fontSize:22,fontWeight:700,padding:"10px 12px",outline:"none",marginBottom:12},
+            placeholder: "Ex : 1, 42, Jean, Table B…", value: label, onChange: e=>setLabel(e.target.value), maxLength: 20,})
+
+          /* Couleur */
+          , React.createElement('div', { style: {fontSize:10,color:lbl,letterSpacing:1.5,textTransform:"uppercase",marginBottom:5,fontWeight:700},}, "Couleur du carton")
+          , React.createElement('div', { style: {display:"flex",gap:7,flexWrap:"wrap",marginBottom:12,alignItems:"center"},}
+            , CARD_COLORS.map(c=>(
+              React.createElement('button', { key: c, onClick: ()=>setColor(c), style: {width:28,height:28,borderRadius:"50%",background:c,cursor:"pointer",
+                border:`3px solid ${color===c?"#fff":"transparent"}`,
+                boxShadow:color===c?`0 0 0 2px ${c}`:"none",
+                transform:color===c?"scale(1.2)":"scale(1)",transition:"all .15s",WebkitTapHighlightColor:"transparent"},})
+            ))
+            , React.createElement('input', { type: "color", value: color, onChange: e=>setColor(e.target.value),
+              style: {width:28,height:28,borderRadius:"50%",border:`2px solid ${lm?"#e5e7eb":"rgba(255,255,255,.2)"}`,padding:0,cursor:"pointer"},})
+          )
+
+          /* Catégorie */
+          , React.createElement('div', { style: {fontSize:10,color:lbl,letterSpacing:1.5,textTransform:"uppercase",marginBottom:5,fontWeight:700},}, "Catégorie")
+          , React.createElement('div', { style: {display:"flex",gap:8,marginBottom:cat==="special"?8:4},}
+            , [["normal","🎴 Normal"],["special","⭐ Spécial"]].map(([v,l])=>(
+              React.createElement('button', { key: v, onClick: ()=>setCat(v), style: {flex:1,padding:"9px",borderRadius:9,cursor:"pointer",
+                fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:12,
+                border:`2px solid ${cat===v?(lm?"#2563eb":"#f5c518"):(lm?"#e5e7eb":"rgba(255,255,255,.1)")}`,
+                background:cat===v?(lm?"#eff6ff":"rgba(245,197,24,.08)"):(lm?"#f9fafb":"rgba(255,255,255,.03)"),
+                color:cat===v?(lm?"#2563eb":"#f5c518"):(lm?"#6b7280":"rgba(255,255,255,.45)"),
+                WebkitTapHighlightColor:"transparent"},}
+                , l
+              )
+            ))
+          )
+          , cat==="special"&&(
+            React.createElement('div', { style: {marginBottom:8,padding:"7px 10px",borderRadius:8,
+              background:lm?"rgba(245,158,11,.07)":"rgba(245,197,24,.06)",
+              border:`1px solid ${lm?"rgba(245,158,11,.3)":"rgba(245,197,24,.2)"}`},}
+              , React.createElement('div', { style: {fontSize:11,color:lm?"#92400e":"rgba(245,197,24,.8)",fontWeight:700,lineHeight:1.5},},
+                "⭐ Non actif par défaut. Activez depuis le Tableau."
+              )
+            )
+          )
+
+        ) /* fin zone scrollable */
+
+        /* ── Numpad fixe + aperçu ── */
+        , React.createElement('div', { style: {flexShrink:0,background:bg,borderTop:`1px solid ${brd}`,
+          padding:"8px 16px 4px"},}
+
+          /* Indicateurs de ligne */
+          , React.createElement('div', { style: {display:"flex",gap:4,marginBottom:6},}
+            , [0,1,2].map(r=>{
+              const cnt=grid[r].filter(v=>v!==null).length, isCur=r===activeLine, isDone=cnt===5;
               return (
-                React.createElement('tr', { key: r, style: {outline:isCur?`2px solid #f5c518`:"none",outlineOffset:"-2px",
-                  background:isCur?(lm?"rgba(245,197,24,.04)":"rgba(245,197,24,.03)"):isDone?(lm?"rgba(0,230,118,.04)":"rgba(0,230,118,.03)"):"transparent"},}
-                  , row.map((cell,c)=>(
-                    React.createElement('td', { key: c, style: {border:`1.5px solid ${color}`,textAlign:"center",height:36,
-                      background:cell===null?(isCur?(lm?"#fffbeb":"rgba(245,197,24,.06)"):(lm?"#f0f9ff":color+"22")):(lm?"#fff":"#1a1548"),
-                      boxShadow:bufCol===c&&isCur?`inset 0 0 0 2px #f5c518`:"none",
-                      transition:"background .15s"},}
-                      , cell!==null&&(
-                        React.createElement('button', { onClick: ()=>setToDel(cell),
-                          style: {width:"100%",height:36,background:color,color:"#fff",
-                            fontSize:12,fontWeight:900,border:"none",cursor:"pointer",
-                            WebkitTapHighlightColor:"transparent"},}
-                          , cell
-                        )
-                      )
-                    )
-                  ))
+                React.createElement('div', { key: r, style: {flex:1,padding:"4px",borderRadius:6,textAlign:"center",
+                  border:`2px solid ${isDone?(lm?"#16a34a":"#00e676"):isCur?(lm?"#f59e0b":"#f5c518"):(lm?"#e5e7eb":"rgba(255,255,255,.08)")}`,
+                  background:isDone?(lm?"#dcfce7":"rgba(0,230,118,.08)"):isCur?(lm?"#fffbeb":"rgba(245,197,24,.07)"):(lm?"#f9fafb":"rgba(255,255,255,.02)")},}
+                  , React.createElement('div', { style: {fontSize:7,fontWeight:800,textTransform:"uppercase",
+                    color:isDone?(lm?"#16a34a":"#00e676"):isCur?(lm?"#d97706":"#f5c518"):(lm?"#9ca3af":"rgba(255,255,255,.22)")},}
+                    , isDone?"✓ L."+(r+1):isCur?"→ L."+(r+1):"L."+(r+1)
+                  )
+                  , React.createElement('div', { style: {fontSize:13,fontWeight:900,fontFamily:"'Fredoka One',cursive",
+                    color:isDone?(lm?"#16a34a":"#00e676"):isCur?(lm?"#1e293b":"#fff"):(lm?"#cbd5e1":"rgba(255,255,255,.2)")},}
+                    , cnt, "/5"
+                  )
                 )
               );
-            }))
+            })
+          )
+
+          /* Buffer + grille aperçu côte à côte */
+          , React.createElement('div', { style: {display:"flex",gap:8,marginBottom:6,alignItems:"flex-start"},}
+            , React.createElement('div', { style: {display:"flex",flexDirection:"column",gap:4,flex:"0 0 auto"},}
+              , React.createElement('div', { style: {textAlign:"center",fontFamily:"'Fredoka One',cursive",fontSize:32,letterSpacing:3,lineHeight:1,
+                padding:"6px 10px",borderRadius:9,minWidth:70,
+                border:`3px solid ${buf?(lm?"#2563eb":"#f5c518"):(lm?"#e5e7eb":"rgba(255,255,255,.1)")}`,
+                background:buf?(lm?"#eff6ff":"rgba(245,197,24,.07)"):(lm?"#f9fafb":"rgba(255,255,255,.02)"),
+                color:buf?(lm?"#1e293b":"#f5c518"):(lm?"#cbd5e1":"rgba(255,255,255,.18)")},}
+                , buf||"—"
+              )
+              , bufCol>=0&&React.createElement('div', { style: {fontSize:8,color:lm?"#2563eb":"#00e5ff",fontWeight:700,textAlign:"center",lineHeight:1.3},},
+                "Col. ", React.createElement('span', { style: {fontFamily:"'Fredoka One',cursive",fontSize:11},}, COL_LABELS[bufCol])
+              )
+              , err&&React.createElement('div', { style: {fontSize:9,color:lm?"#dc2626":"#ff4fa3",fontWeight:700,
+                padding:"3px 6px",background:lm?"#fef2f2":"rgba(255,79,163,.07)",
+                border:`1px solid ${lm?"#fca5a5":"rgba(255,79,163,.25)"}`,borderRadius:5,maxWidth:80,lineHeight:1.3},}, err)
+            )
+            /* Grille aperçu compacte */
+            , React.createElement('div', { style: {flex:1,overflowX:"auto",borderRadius:6,overflow:"hidden",border:`2px solid ${color}`},}
+              , React.createElement('table', { style: {width:"100%",borderCollapse:"collapse",tableLayout:"fixed"},}
+                , React.createElement('colgroup', null, Array(9).fill(0).map((_,i)=>React.createElement('col', { key: i, style: {width:`${100/9}%`},})))
+                , React.createElement('tbody', null, grid.map((row,r)=>{
+                  const isCur=r===activeLine,isDone=row.filter(v=>v!==null).length===5;
+                  return (
+                    React.createElement('tr', { key: r, style: {outline:isCur?"2px solid #f5c518":"none",outlineOffset:"-2px"},}
+                      , row.map((cell,c)=>(
+                        React.createElement('td', { key: c, style: {border:`1px solid ${color}`,textAlign:"center",height:24,
+                          background:cell===null?(isCur?(lm?"#fffbeb":"rgba(245,197,24,.05)"):(lm?"#f0f9ff":color+"22")):(lm?"#fff":"#1a1548"),
+                          boxShadow:bufCol===c&&isCur?"inset 0 0 0 2px #f5c518":"none"},}
+                          , cell!==null&&(
+                            React.createElement('button', { onClick: ()=>setToDel(cell),
+                              style: {width:"100%",height:24,background:color,color:"#fff",
+                                fontSize:9,fontWeight:900,border:"none",cursor:"pointer",
+                                WebkitTapHighlightColor:"transparent"},}
+                              , cell
+                            )
+                          )
+                        )
+                      ))
+                    )
+                  );
+                }))
+              )
+            )
+          )
+
+          , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:5,marginBottom:0},}
+            , ["1","2","3","4","5","6","7","8","9","⌫","0","✓"].map(k=>(
+              React.createElement('button', { key: k, onClick: ()=>handlePad(k),
+                onTouchStart: e=>e.currentTarget.style.opacity=".6",
+                onTouchEnd: e=>e.currentTarget.style.opacity="1",
+                style: {padding:"13px 0",borderRadius:9,cursor:"pointer",fontWeight:700,
+                  fontFamily:"'Fredoka One',cursive",fontSize:k==="✓"||k==="⌫"?17:20,
+                  WebkitTapHighlightColor:"transparent",transition:"opacity .1s",
+                  border:k==="✓"?"none":k==="⌫"?`1.5px solid ${lm?"#fca5a5":"rgba(255,79,163,.35)"}`:`1.5px solid ${lm?"#e5e7eb":"rgba(255,255,255,.1)"}`,
+                  background:k==="✓"?"linear-gradient(135deg,#ff4fa3,#9c27b0)":k==="⌫"?(lm?"#fef2f2":"rgba(255,79,163,.07)"):(lm?"#f9fafb":"rgba(255,255,255,.04)"),
+                  color:k==="✓"?"#fff":k==="⌫"?(lm?"#dc2626":"#ff4fa3"):(lm?"#1e293b":"rgba(255,255,255,.85)"),
+                  boxShadow:k==="✓"?"0 3px 12px rgba(255,79,163,.4)":"none"},}
+                , k
+              )
+            ))
           )
         )
 
-        /* Chips numéros saisis */
-        , nums.length>0&&(
-          React.createElement('div', { style: {marginBottom:12},}
-            , React.createElement('div', { style: {fontSize:9,color:lm?"#9ca3af":"rgba(255,255,255,.28)",fontWeight:700,marginBottom:5,textTransform:"uppercase",letterSpacing:1},}
-              , nums.length, "/15 — toucher un numéro pour le supprimer"
-            )
-            , React.createElement('div', { style: {display:"flex",flexWrap:"wrap",gap:5,padding:"8px",
-              background:lm?"#f9fafb":"rgba(255,255,255,.02)",
-              borderRadius:8,border:`1px solid ${lm?"#e5e7eb":"rgba(255,255,255,.06)"}`},}
-              , nums.map(n=>(
-                React.createElement('button', { key: n, onClick: ()=>setToDel(n),
-                  style: {width:32,height:32,borderRadius:"50%",background:color,color:"#fff",
-                    fontSize:11,fontWeight:800,border:"none",cursor:"pointer",position:"relative",
-                    boxShadow:`0 2px 6px ${color}55`,WebkitTapHighlightColor:"transparent"},}
-                  , n
-                  , React.createElement('span', { style: {position:"absolute",top:-3,right:-3,width:12,height:12,borderRadius:"50%",
-                    background:"#ef4444",border:`1.5px solid ${bg}`,
-                    display:"flex",alignItems:"center",justifyContent:"center",
-                    fontSize:7,color:"#fff",fontWeight:900,lineHeight:1},}, "×")
-                )
-              ))
-            )
-          )
-        )
-
-        /* Séparateur */
-        , React.createElement('div', { style: {height:1,background:lm?"#e5e7eb":"rgba(255,255,255,.08)",margin:"4px 0 14px"},})
-
-        /* ══════════════════════════════════════════
-            2. INFOS DU CARTON (en dessous)
-           ══════════════════════════════════════════ */
-
-        /* Identifiant */
-        , React.createElement('div', { style: {fontSize:10,color:lbl,letterSpacing:1.5,textTransform:"uppercase",marginBottom:5,fontWeight:700},}, "Identifiant")
-        , React.createElement('input', { style: {display:"block",width:"100%",background:inBg,border:`2px solid ${inBrd}`,borderRadius:9,
-          color:inCol,fontFamily:"'Nunito',sans-serif",fontSize:22,fontWeight:700,padding:"10px 12px",outline:"none",marginBottom:12},
-          placeholder: "Ex : 1, 42, Jean, Table B…"      , value: label, onChange: e=>setLabel(e.target.value), maxLength: 20,})
-
-        /* Couleur */
-        , React.createElement('div', { style: {fontSize:10,color:lbl,letterSpacing:1.5,textTransform:"uppercase",marginBottom:5,fontWeight:700},}, "Couleur du carton"  )
-        , React.createElement('div', { style: {display:"flex",gap:7,flexWrap:"wrap",marginBottom:12,alignItems:"center"},}
-          , CARD_COLORS.map(c=>(
-            React.createElement('button', { key: c, onClick: ()=>setColor(c), style: {width:28,height:28,borderRadius:"50%",background:c,cursor:"pointer",
-              border:`3px solid ${color===c?"#fff":"transparent"}`,
-              boxShadow:color===c?`0 0 0 2px ${c}`:"none",
-              transform:color===c?"scale(1.2)":"scale(1)",transition:"all .15s",WebkitTapHighlightColor:"transparent"},})
-          ))
-          , React.createElement('input', { type: "color", value: color, onChange: e=>setColor(e.target.value),
-            style: {width:28,height:28,borderRadius:"50%",border:`2px solid ${lm?"#e5e7eb":"rgba(255,255,255,.2)"}`,padding:0,cursor:"pointer"},})
-        )
-
-        /* Catégorie */
-        , React.createElement('div', { style: {fontSize:10,color:lbl,letterSpacing:1.5,textTransform:"uppercase",marginBottom:5,fontWeight:700},}, "Catégorie")
-        , React.createElement('div', { style: {display:"flex",gap:8,marginBottom:cat==="special"?8:12},}
-          , [["normal","🎴 Normal"],["special","⭐ Spécial"]].map(([v,l])=>(
-            React.createElement('button', { key: v, onClick: ()=>setCat(v), style: {flex:1,padding:"9px",borderRadius:9,cursor:"pointer",
-              fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:12,
-              border:`2px solid ${cat===v?(lm?"#2563eb":"#f5c518"):(lm?"#e5e7eb":"rgba(255,255,255,.1)")}`,
-              background:cat===v?(lm?"#eff6ff":"rgba(245,197,24,.08)"):(lm?"#f9fafb":"rgba(255,255,255,.03)"),
-              color:cat===v?(lm?"#2563eb":"#f5c518"):(lm?"#6b7280":"rgba(255,255,255,.45)"),
-              WebkitTapHighlightColor:"transparent"},}
-              , l
-            )
-          ))
-        )
-        , cat==="special"&&(
-          React.createElement('div', { style: {marginBottom:12,padding:"7px 10px",borderRadius:8,
-            background:lm?"rgba(245,158,11,.07)":"rgba(245,197,24,.06)",
-            border:`1px solid ${lm?"rgba(245,158,11,.3)":"rgba(245,197,24,.2)"}`},}
-            , React.createElement('div', { style: {fontSize:11,color:lm?"#92400e":"rgba(245,197,24,.8)",fontWeight:700,lineHeight:1.5},}, "⭐ Non actif par défaut. Activez depuis le Tableau."
-
-            )
-          )
-        )
-
-        )
         /* ── Boutons d'action fixes en bas ── */
-        , React.createElement('div', { style: {flexShrink:0,padding:`10px 16px max(20px,env(safe-area-inset-bottom))`,
+        , React.createElement('div', { style: {flexShrink:0,padding:`8px 16px max(20px,env(safe-area-inset-bottom))`,
           borderTop:`1px solid ${brd}`,background:bg,display:"flex",gap:8},}
           , card&&React.createElement('button', { style: {...dangerBs(lm),flex:"0 0 auto",padding:"12px 14px"}, onClick: ()=>onDelete(card.id),}, "🗑")
           , React.createElement('button', { style: ghostBs(lm), onClick: onCancel,}, "Annuler")
@@ -704,6 +701,7 @@ function CardEditor({card, defaultColor, onSave, onCancel, onDelete, lm}) {
             , card?"Sauvegarder":"Créer"
           )
         )
+
       )
     )
   );

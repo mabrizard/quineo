@@ -168,43 +168,43 @@ function getRowMissingNumbers(grid, ds, rowIndex) {
 
 function cardStatus(grid, ds, mode) {
   const ls = grid.map(r=>lineStatus(r,ds));
-  const playable = ls.map((l, i)=>({...l, rowIndex:i})).filter(l=>l.total>0);
+  const playable = ls.map((l,i)=>({...l,rowIndex:i})).filter(l=>l.total>0);
   const all = grid.flat().filter(v=>v!==null);
   const hitAll = all.filter(n=>ds.has(n)).length;
   const wonLines = playable.filter(l=>l.remaining===0).length;
 
-  const oneLineMissing = wonLines>=1 ? 0 : (playable.length ? Math.min(...playable.map(l=>l.remaining)) : 0);
-  let oneLineMissingNum = null;
-  let oneLineMissingNums = [];
-  const oneLineNearRows = playable.filter(l=>l.remaining===1 && l.hit < l.total);
-  if (oneLineNearRows.length) oneLineMissingNums = oneLineNearRows.map(r=>getRowMissingNumbers(grid, ds, r.rowIndex)[0]).filter(Boolean);
-  if (oneLineMissing === 1 && wonLines < 1) {
-    oneLineMissingNum = oneLineMissingNums[0]||null;
-  }
+  // ── Quine (1 ligne) : max 1 par carton ──
+  // La meilleure ligne non gagnée (celle avec le moins de restants)
+  const notWonLines = playable.filter(l=>l.remaining>0).sort((a,b)=>a.remaining-b.remaining);
+  const bestLine = notWonLines[0]||null;
+  const oneLineMissing = wonLines>=1 ? 0 : (bestLine ? bestLine.remaining : 0);
+  const oneLineMissingNums = bestLine ? getRowMissingNumbers(grid,ds,bestLine.rowIndex) : [];
+  const oneLineMissingNum = oneLineMissingNums[0]||null;
 
-  const remainSorted = playable.map(l=>l.remaining).sort((a,b)=>a-b);
-  const twoLinesMissing = wonLines>=2 ? 0 : (wonLines===1 ? (remainSorted[0]||0) : ((remainSorted[0]||0)+(remainSorted[1]||0)));
-  let twoLinesMissingNum = null;
-  let twoLinesMissingNums = [];
-  const twoLineNearRows = playable.filter(l=>l.remaining===1 && l.hit < l.total);
-  if (twoLineNearRows.length) twoLinesMissingNums = twoLineNearRows.map(r=>getRowMissingNumbers(grid, ds, r.rowIndex)[0]).filter(Boolean);
-  if (twoLinesMissing === 1 && wonLines < 2) {
-    twoLinesMissingNum = twoLinesMissingNums[0]||null;
-  }
+  // ── Double quine (2 lignes) ──
+  // On cherche les 2 meilleures lignes non gagnées
+  const linesNeeded = Math.max(0, 2-wonLines); // nb de lignes encore à gagner
+  const twoLinesRemain = notWonLines.slice(0,linesNeeded).reduce((s,l)=>s+l.remaining,0);
+  const twoLinesMissing = wonLines>=2 ? 0 : twoLinesRemain;
+  // Les numéros manquants = ceux des lignes en attente
+  const twoLinesMissingNums = notWonLines.slice(0,linesNeeded).flatMap(l=>getRowMissingNumbers(grid,ds,l.rowIndex));
+  const twoLinesMissingNum = twoLinesMissingNums[0]||null;
 
+  // ── Carton plein ──
   const fullMissing = all.length - hitAll;
-  let fullMissingNum = null;
-  if (fullMissing === 1) fullMissingNum = all.find(n=>!ds.has(n))||null;
+  const fullMissingNums = all.filter(n=>!ds.has(n));
+  const fullMissingNum = fullMissingNums[0]||null;
 
   const goals = {
-    quine:{won:wonLines>=1,missing:oneLineMissing,missingNum:oneLineMissingNum,missingNums:oneLineMissingNums,alert:oneLineMissing===1&&wonLines<1},
-    double:{won:wonLines>=2,missing:twoLinesMissing,missingNum:twoLinesMissingNum,missingNums:twoLinesMissingNums,alert:twoLinesMissing===1&&wonLines<2},
-    full:{won:hitAll===all.length&&all.length>0,missing:fullMissing,missingNum:fullMissingNum,missingNums:fullMissing===1&&fullMissingNum?[fullMissingNum]:[],alert:fullMissing===1}
+    quine: {won:wonLines>=1, missing:oneLineMissing, missingNum:oneLineMissingNum, missingNums:oneLineMissingNums, alert:oneLineMissing<=2&&wonLines<1},
+    double:{won:wonLines>=2, missing:twoLinesMissing, missingNum:twoLinesMissingNum, missingNums:twoLinesMissingNums, alert:twoLinesMissing<=2&&wonLines<2},
+    full:  {won:hitAll===all.length&&all.length>0, missing:fullMissing, missingNum:fullMissingNum, missingNums:fullMissingNums, alert:fullMissing<=2}
   };
 
-  if (mode === "quine") return { won:goals.quine.won, alert:goals.quine.alert, lines:ls, hitAll, total:all.length, missing:goals.quine.missing, missingNum:goals.quine.missingNum, wonLines, goals, nextGoal: wonLines>=2 ? "Carton plein" : wonLines>=1 ? "2 lignes" : "1 ligne" };
-  if (mode === "double") return { won:goals.double.won, alert:goals.double.alert, lines:ls, hitAll, total:all.length, missing:goals.double.missing, missingNum:goals.double.missingNum, wonLines, goals, nextGoal: wonLines>=2 ? "Carton plein" : wonLines>=1 ? "2 lignes" : "1 ligne" };
-  return { won:goals.full.won, alert:goals.full.alert, lines:ls, hitAll, total:all.length, missing:goals.full.missing, missingNum:goals.full.missingNum, wonLines, goals, nextGoal: wonLines>=2 ? "Carton plein" : wonLines>=1 ? "2 lignes" : "1 ligne" };
+  const nextGoal = wonLines>=2?"Carton plein":wonLines>=1?"2 lignes":"1 ligne";
+  if (mode==="quine")  return {won:goals.quine.won, alert:goals.quine.alert, lines:ls, hitAll, total:all.length, missing:goals.quine.missing, missingNum:oneLineMissingNum, wonLines, goals, nextGoal};
+  if (mode==="double") return {won:goals.double.won, alert:goals.double.alert, lines:ls, hitAll, total:all.length, missing:goals.double.missing, missingNum:twoLinesMissingNum, wonLines, goals, nextGoal};
+  return {won:goals.full.won, alert:goals.full.alert, lines:ls, hitAll, total:all.length, missing:goals.full.missing, missingNum:fullMissingNum, wonLines, goals, nextGoal};
 }
 
 function sortCards(cards, ds, mode) {
@@ -1297,7 +1297,7 @@ function HistoryModal({drawn, onClose, lm}) {
 }
 
 // ─── NUMBER PAD ─────────────────────────────────────────────
-function NumberPad({ds, lm, navBg, navBrd, mode, setMode, onToggle, drawn, onAdd, onScan}) {
+function NumberPad({ds, lm, navBg, navBrd, mode, setMode, onToggle, drawn, onAdd, onScan, onShowHistory}) {
   const [buf, setBuf] = useState("");
   const [flash, setFlash] = useState(null);
   const [padMode, setPadMode] = useState("numpad"); // "numpad" | "grid" | "hidden"
@@ -1347,11 +1347,13 @@ function NumberPad({ds, lm, navBg, navBrd, mode, setMode, onToggle, drawn, onAdd
       /* ── Row 1: cochés + last ball + display + col hint ── */
       , React.createElement('div', { style: {display:"flex",gap:8,alignItems:"stretch",marginBottom:7},}
 
-        /* Cochés badge */
-        , React.createElement('div', { style: {display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-            flexShrink:0,gap:1,padding:"4px 7px",borderRadius:10,
-            background:lm?"rgba(0,0,0,.04)":"rgba(255,255,255,.06)",
-            border:`1px solid ${lm?"#e5e7eb":"rgba(255,255,255,.12)"}`},}
+        /* Cochés badge — cliquable → historique */
+        , React.createElement('button', { onClick: onShowHistory,
+            style: {display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+              flexShrink:0,gap:1,padding:"4px 7px",borderRadius:10,cursor:"pointer",
+              background:lm?"rgba(0,0,0,.04)":"rgba(255,255,255,.06)",
+              border:`1px solid ${lm?"#e5e7eb":"rgba(255,255,255,.12)"}`,
+              WebkitTapHighlightColor:"transparent"},}
           , React.createElement('span', { style: {fontFamily:"'Fredoka One',cursive",fontSize:20,color:lm?"#d97706":"#00e5ff",lineHeight:1},}, ds.size)
           , React.createElement('span', { style: {fontSize:7,fontWeight:800,color:dimC,textTransform:"uppercase",letterSpacing:.8},}, "cochés")
         )
@@ -1766,7 +1768,8 @@ function App() {
                 onToggle: toggleCell,
                 drawn: game.drawn,
                 onAdd: ()=>{setEditCard(null);setShowEditor(true);},
-                onScan: ()=>setShowScanner(true),})
+                onScan: ()=>setShowScanner(true),
+                onShowHistory: ()=>setShowHistory(true),})
             )
           )
 

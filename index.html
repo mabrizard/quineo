@@ -830,23 +830,70 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
     if(!f)return;
     setImage(URL.createObjectURL(f));setDone(false);setError(null);setCards([]);
     setMt("image/jpeg");
-    // Compress image before sending — resize to max 1024px, quality 0.7
+
     const reader=new FileReader();
     reader.onload=e=>{
+      const arrayBuf=e.target.result;
+      // Detect EXIF orientation to auto-correct landscape/rotated photos
+      let orientation=1;
+      try {
+        const view=new DataView(arrayBuf);
+        if(view.getUint16(0,false)===0xFFD8){
+          let offset=2;
+          while(offset<view.byteLength){
+            if(view.getUint16(offset,false)===0xFFE1){
+              if(view.getUint32(offset+4,false)===0x45786966){
+                const little=view.getUint16(offset+10,false)===0x4949;
+                const tags=view.getUint16(offset+14,little);
+                for(let i=0;i<tags;i++){
+                  if(view.getUint16(offset+16+i*12,little)===0x0112){
+                    orientation=view.getUint16(offset+16+i*12+8,little);break;
+                  }
+                }
+              }
+              break;
+            }
+            offset+=2+view.getUint16(offset+2,false);
+          }
+        }
+      } catch(_){}
+
+      const blob=new Blob([arrayBuf]);
+      const url=URL.createObjectURL(blob);
       const img=new Image();
       img.onload=()=>{
-        const MAX=1024;
+        // Max 1200px for better OCR accuracy on dense grids
+        const MAX=1200;
         let w=img.width, h=img.height;
-        if(w>MAX||h>MAX){ const r=MAX/Math.max(w,h); w=Math.round(w*r); h=Math.round(h*r); }
+        // Apply rotation for landscape EXIF
+        const rotate=(orientation>=5&&orientation<=8);
+        const nw=rotate?h:w, nh=rotate?w:h;
+        const scale=Math.min(1,MAX/Math.max(nw,nh));
+        const cw=Math.round(nw*scale), ch=Math.round(nh*scale);
+
         const canvas=document.createElement('canvas');
-        canvas.width=w; canvas.height=h;
-        canvas.getContext('2d').drawImage(img,0,0,w,h);
-        const compressed=canvas.toDataURL('image/jpeg',0.75);
+        canvas.width=cw; canvas.height=ch;
+        const ctx=canvas.getContext('2d');
+        ctx.save();
+        // Apply EXIF rotation transforms
+        if(orientation===2){ctx.transform(-1,0,0,1,cw,0);}
+        else if(orientation===3){ctx.transform(-1,0,0,-1,cw,ch);}
+        else if(orientation===4){ctx.transform(1,0,0,-1,0,ch);}
+        else if(orientation===5){ctx.transform(0,1,1,0,0,0);}
+        else if(orientation===6){ctx.transform(0,1,-1,0,ch,0);}
+        else if(orientation===7){ctx.transform(0,-1,-1,0,ch,cw);}
+        else if(orientation===8){ctx.transform(0,-1,1,0,0,cw);}
+        ctx.drawImage(img,0,0,cw,ch);
+        ctx.restore();
+
+        // High quality JPEG for OCR
+        const compressed=canvas.toDataURL('image/jpeg',0.90);
         setB64(compressed.split(",")[1]);
+        URL.revokeObjectURL(url);
       };
-      img.src=e.target.result;
+      img.src=url;
     };
-    reader.readAsDataURL(f);
+    reader.readAsArrayBuffer(f);
   };
   const scan=async()=>{
     if(!b64)return;
@@ -854,24 +901,37 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
     try {
       const res=await fetch("/api/claude",{method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:4096,
+        body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:8192,
           messages:[{role:"user",content:[
             {type:"image",source:{type:"base64",media_type:mt,data:b64}},
-            {type:"text",text:`Tu es un expert en lecture de cartons de loto quine français.
-Règles strictes du carton de loto français:
-- 3 lignes × 9 colonnes
-- Chaque ligne contient EXACTEMENT 5 numéros et 4 cases vides (null)
-- Colonne 0: numéros 1-9, Colonne 1: 10-19, Colonne 2: 20-29, ..., Colonne 8: 80-90
-- Un numéro ne peut être que dans sa colonne correspondante
+            {type:"text",text:`Tu es un expert OCR spécialisé dans les cartons de loto quine français (aussi appelés "cartons 90 numéros").
 
-Il y a ${ps} carton(s) dans cette image.
-${ps>1?`Les cartons sont numérotés de haut en bas dans la première colonne, puis de haut en bas dans la deuxième colonne (ordre colonne par colonne).`:""}
+RÈGLES ABSOLUES DU CARTON DE LOTO FRANÇAIS:
+- Grille: 3 lignes × 9 colonnes
+- Chaque ligne: EXACTEMENT 5 numéros + 4 cases vides (null)
+- Colonnes par dizaine: col0=1-9, col1=10-19, col2=20-29, col3=30-39, col4=40-49, col5=50-59, col6=60-69, col7=70-79, col8=80-90
+- Un numéro N ne peut JAMAIS être dans une autre colonne que la sienne
+- VÉRIFICATION OBLIGATOIRE: après lecture, compte les numéros de chaque ligne (doit être exactement 5)
 
-Analyse ATTENTIVEMENT chaque carton visible (peu importe l'orientation de la photo).
-Réponds UNIQUEMENT avec ce JSON brut sans aucun texte avant ou après:
+ORIENTATION DE LA PHOTO:
+- La photo peut être en portrait ou paysage
+- Si la photo est en paysage (tournée de 90°), les lignes du carton apparaissent comme des colonnes visuelles
+- Dans ce cas, adapte ta lecture en conséquence: chaque "colonne visuelle" est une ligne du carton
+- Quelle que soit l'orientation, les règles ci-dessus s'appliquent toujours
+
+NOMBRE DE CARTONS: ${ps}
+${ps>1?`ORDRE: numérotation colonne par colonne, de haut en bas dans la 1ère colonne, puis haut en bas dans la 2ème colonne, etc.`:""}
+
+PROCESSUS DE VALIDATION (applique-le pour chaque carton):
+1. Lis tous les numéros visibles
+2. Place chaque numéro dans sa colonne selon sa valeur (1-9→col0, 10-19→col1, etc.)
+3. Vérifie que chaque ligne a exactement 5 numéros - si ce n'est pas le cas, relis
+4. Si un numéro semble dans la mauvaise colonne, c'est une erreur de lecture - corrige-le
+
+FORMAT DE RÉPONSE - JSON BRUT UNIQUEMENT, aucun texte avant ou après:
 {"cards":[{"id":0,"grid":[[null,12,null,null,35,null,63,null,82],[3,null,22,31,null,55,null,71,null],[null,17,null,38,null,56,null,null,89]]}]}
 
-IMPORTANT: Vérifie que chaque ligne a exactement 5 numéros. Fournis exactement ${ps} carton(s).`}
+Fournis exactement ${ps} carton(s). Chaque grille: tableau de 3 lignes, chaque ligne: tableau de 9 éléments (nombre ou null).`}
           ]}]})});
       if(!res.ok)throw new Error(`Erreur ${res.status}`);
       const data=await res.json();
@@ -879,8 +939,11 @@ IMPORTANT: Vérifie que chaque ligne a exactement 5 numéros. Fournis exactement
       const raw=_optionalChain([data, 'access', _8 => _8.content, 'optionalAccess', _9 => _9.find, 'call', _10 => _10(b=>b.type==="text"), 'optionalAccess', _11 => _11.text])||"";
       const parsed=extractJSON(raw);
       if(!_optionalChain([parsed, 'access', _12 => _12.cards, 'optionalAccess', _13 => _13.length]))throw new Error("Aucun carton détecté");
-      setCards(parsed.cards.map((c,i)=>({id:i,validated:false,label:"",
-        grid:(c.grid||[]).map(row=>Array.isArray(row)?row.map(v=>v==null?null:Number(v)):Array(9).fill(null))})));
+      setCards(parsed.cards.map((c,i)=>{
+        const rawGrid=(c.grid||[]).map(row=>Array.isArray(row)?row.map(v=>v==null?null:Number(v)):Array(9).fill(null));
+        const validatedGrid=validateGrid(rawGrid);
+        return {id:i,validated:false,label:"",grid:validatedGrid};
+      }));
       setDone(true);setAi(0);
     } catch(e){setError(e.message);setDone(true);setCards(Array.from({length:ps},(_,i)=>({id:i,grid:emptyGrid(),validated:false,label:""})));}
     finally{setScanning(false);}

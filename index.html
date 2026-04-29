@@ -750,7 +750,7 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
     try {
       const res=await fetch("/api/claude",{method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:4096,
+        body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:4096,
           messages:[{role:"user",content:[
             {type:"image",source:{type:"base64",media_type:mt,data:b64}},
             {type:"text",text:`Analyse ce(s) carton(s) de loto quine français. ${ps} carton(s), 3 lignes × 9 colonnes. Chaque ligne = 5 numéros + 4 cases vides (null). Col 0:1-9, col 1:10-19…col 8:80-90.\nRéponds UNIQUEMENT JSON brut:\n{"cards":[{"id":0,"grid":[[null,12,null,null,35,null,63,null,82],[3,null,22,31,null,55,null,71,null],[null,17,null,38,null,56,null,null,89]]}]}\nFournis exactement ${ps} carton(s).`}

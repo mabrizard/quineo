@@ -283,10 +283,10 @@ function FlyingBall({number, color, onDone}) {
 function CardGrid({grid, ds, cardColor, markerId, markerColor, fontSize=15, lm, wonLines=[], onToggle}) {
   const marker = MARKERS.find(m=>m.id===markerId)||MARKERS[0];
   return (
-    React.createElement('div', { style: {display:"grid",gridTemplateRows:"repeat(3,1fr)",gap:lm?3:4,padding:lm?4:5,
-      background:lm?"#eef2f7":"rgba(0,0,0,.3)",overflow:"visible"},}
+    React.createElement('div', { style: {display:"grid",gridTemplateRows:"repeat(3,1fr)",gap:lm?2:3,padding:lm?3:4,
+      background:lm?"#eef2f7":"rgba(0,0,0,.3)",overflow:"hidden"},}
       , grid.map((row,r)=>(
-        React.createElement('div', { key: r, style: {display:"grid",gridTemplateColumns:"repeat(9,1fr)",gap:lm?3:4,overflow:"visible"},}
+        React.createElement('div', { key: r, style: {display:"grid",gridTemplateColumns:"repeat(9,1fr)",gap:lm?2:3,overflow:"hidden"},}
           , row.map((cell,c)=>{
             const empty=cell===null, drawn=cell!==null&&ds.has(cell), lineOk=wonLines.includes(r);
             let bg,col,brd,shadow="none",tf="none";
@@ -296,7 +296,7 @@ function CardGrid({grid, ds, cardColor, markerId, markerColor, fontSize=15, lm, 
               bg="linear-gradient(135deg,#f5c518,#ff6d00)";brd="1.5px solid #f5c518";col="#000";shadow="0 0 8px rgba(245,197,24,.6)";
             } else if (drawn) {
               bg=lm?"linear-gradient(135deg,#ec4899,#9c27b0)":"linear-gradient(135deg,#ff4fa3,#9c27b0)";
-              brd=`1.5px solid ${lm?"#ec4899":"#ff4fa3"}`;col="#fff";shadow="0 0 10px rgba(255,79,163,.5)";tf="scale(1.05)";
+              brd=`1.5px solid ${lm?"#ec4899":"#ff4fa3"}`;col="#fff";shadow="none";tf="none";
             } else {
               bg=lm?"#fff":"rgba(255,255,255,.06)";
               brd=`1.5px solid ${lm?"#d1d5db":"rgba(255,255,255,.14)"}`;
@@ -305,11 +305,11 @@ function CardGrid({grid, ds, cardColor, markerId, markerColor, fontSize=15, lm, 
             return (
               React.createElement('div', { key: c,
                 onClick: ()=>!empty&&onToggle&&onToggle(cell),
-                style: {aspectRatio:"1",borderRadius:lm?5:7,display:"flex",alignItems:"center",justifyContent:"center",
+                style: {aspectRatio:"1",borderRadius:lm?4:6,display:"flex",alignItems:"center",justifyContent:"center",
                   background:bg,border:brd,color:col,fontFamily:"'Fredoka One',cursive",
                   fontSize:lm?fontSize+1:fontSize,fontWeight:900,lineHeight:1,
                   boxShadow:shadow,transform:tf,transition:"all .18s",
-                  position:"relative",overflow:"visible",userSelect:"none",
+                  position:"relative",overflow:"hidden",userSelect:"none",
                   cursor:empty?"default":"pointer",WebkitTapHighlightColor:"transparent"},}
                 , !empty&&React.createElement('span', { style: {position:"relative",zIndex:2,lineHeight:1,pointerEvents:"none"},}, cell)
                 , !empty&&drawn&&React.createElement('span', { style: {position:"absolute",inset:0,zIndex:1,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"inherit",pointerEvents:"none"},}, marker.render(markerColor))
@@ -339,7 +339,7 @@ function LotoCard({card, ds, mode, onToggleActive, onEdit, markerId, markerColor
 
   if (density==="mini") {
     return (
-      React.createElement('div', { style: {border:`2px solid ${outlineColor}`,borderRadius:12,overflow:"visible",opacity:inactive?.35:1,
+      React.createElement('div', { style: {border:`2px solid ${outlineColor}`,borderRadius:12,overflow:"hidden",opacity:inactive?.35:1,
         background:lm?"#fff":"linear-gradient(135deg,rgba(30,27,75,.97),rgba(15,12,41,.97))",
         boxShadow:st.won?"0 0 16px rgba(245,197,24,.5)":st.alert?"0 0 12px rgba(255,79,163,.4)":"0 3px 12px rgba(0,0,0,.35)",
         position:"relative"},}
@@ -360,7 +360,7 @@ function LotoCard({card, ds, mode, onToggleActive, onEdit, markerId, markerColor
 
   const fs = density==="compact"?12:15;
   return (
-    React.createElement('div', { style: {border:`2px solid ${outlineColor}`,borderRadius:16,overflow:"visible",opacity:inactive?.35:1,
+    React.createElement('div', { style: {border:`2px solid ${outlineColor}`,borderRadius:16,overflow:"hidden",opacity:inactive?.35:1,
       background:lm?(st.won?"#fffbeb":st.alert?"#fdf2f8":"#fff"):"linear-gradient(135deg,rgba(30,27,75,.97),rgba(15,12,41,.97))",
       marginBottom:density==="compact"?8:16,position:"relative",
       boxShadow:st.won?"0 0 28px rgba(245,197,24,.5),0 6px 24px rgba(0,0,0,.4)":
@@ -544,7 +544,7 @@ function firstInvalidEntryPosition(grid) {
 }
 
 // ─── CARD EDITOR ─────────────────────────────────────────────────
-function CardEditor({card, defaultColor, onSave, onCancel, onDelete, lm}) {
+function CardEditor({card, defaultColor, onSave, onCancel, onDelete, onPlay, lm}) {
   const [grid,  setGrid]  = useState(()=>card?card.grid.map(r=>[...r]):emptyGrid());
   const [color, setColor] = useState(_optionalChain([card, 'optionalAccess', _2 => _2.color])||(defaultColor||CARD_COLORS[0]));
   const [label, setLabel] = useState(_optionalChain([card, 'optionalAccess', _3 => _3.label])||"");
@@ -782,12 +782,21 @@ function CardEditor({card, defaultColor, onSave, onCancel, onDelete, lm}) {
 
         /* ── Boutons d'action fixes en bas ── */
         , React.createElement('div', { style: {flexShrink:0,padding:`8px 16px max(20px,env(safe-area-inset-bottom))`,
-          borderTop:`1px solid ${brd}`,background:bg,display:"flex",gap:8},}
+          borderTop:`1px solid ${brd}`,background:bg,display:"flex",gap:8,flexWrap:"wrap"},}
           , card&&React.createElement('button', { style: {...dangerBs(lm),flex:"0 0 auto",padding:"12px 14px"}, onClick: ()=>onDelete(card.id),}, "🗑")
           , React.createElement('button', { style: ghostBs(lm), onClick: onCancel,}, "Annuler")
           , React.createElement('button', { style: primaryBs, onClick: ()=>onSave({grid,color,label,category:cat}),}
             , card?"Sauvegarder":"Créer"
           )
+          , !card&&React.createElement('button', {
+              style: {flex:"1 1 100%",padding:"13px 16px",borderRadius:11,border:"none",cursor:"pointer",
+                fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:15,
+                display:"flex",alignItems:"center",justifyContent:"center",gap:8,
+                background:"linear-gradient(135deg,#22c55e,#16a34a)",color:"#fff",
+                boxShadow:"0 4px 14px rgba(34,197,94,.35)",WebkitTapHighlightColor:"transparent"},
+              onClick: ()=>{onSave({grid,color,label,category:cat});onPlay&&onPlay();},},
+              "▶ Jouer"
+            )
         )
 
       )
@@ -1925,7 +1934,7 @@ function App() {
         )
 
         /* MODALS */
-        , showEditor  &&React.createElement(CardEditor, {  card: editCard, defaultColor: lastColor, onSave: editCard?saveCard:addCard, onCancel: ()=>{setShowEditor(false);setEditCard(null);}, onDelete: delCard, lm: lm,})
+        , showEditor  &&React.createElement(CardEditor, {  card: editCard, defaultColor: lastColor, onSave: editCard?saveCard:addCard, onCancel: ()=>{setShowEditor(false);setEditCard(null);}, onDelete: delCard, onPlay: ()=>{setShowEditor(false);setEditCard(null);}, lm: lm,})
         , showScanner &&React.createElement(ScannerModal, { onSaveCards: importScanned, onCancel: ()=>setShowScanner(false), lm: lm,})
         , showSettings&&React.createElement(SettingsModal, { settings: settings, onSave: saveSets, onClose: ()=>setShowSettings(false), lm: lm,})
         , showGameMgr &&React.createElement(GameMgrModal, { games: games, currentGame: game.id, onNewGame: newGame, onDeleteGame: delGame, onSelectGame: id=>{setCurrentId(id);setWinnerIds(new Set());setShowGameMgr(false);}, onClearTokens: clearTokens, onClose: ()=>setShowGameMgr(false), lm: lm,})

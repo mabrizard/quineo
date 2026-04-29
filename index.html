@@ -886,9 +886,23 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
         ctx.drawImage(img,0,0,cw,ch);
         ctx.restore();
 
-        // High quality JPEG for OCR
-        const compressed=canvas.toDataURL('image/jpeg',0.90);
-        setB64(compressed.split(",")[1]);
+        // If image is landscape after EXIF correction, also try rotating 90° CCW
+        // to ensure the card grid is always in portrait orientation for the AI
+        const isLandscape = cw > ch;
+        if (isLandscape) {
+          // Rotate 90° CCW: width/height swap
+          const rotCanvas = document.createElement('canvas');
+          rotCanvas.width = ch; rotCanvas.height = cw;
+          const rctx = rotCanvas.getContext('2d');
+          rctx.translate(0, cw);
+          rctx.rotate(-Math.PI/2);
+          rctx.drawImage(canvas, 0, 0);
+          const compressed = rotCanvas.toDataURL('image/jpeg', 0.90);
+          setB64(compressed.split(",")[1]);
+        } else {
+          const compressed = canvas.toDataURL('image/jpeg', 0.90);
+          setB64(compressed.split(",")[1]);
+        }
         URL.revokeObjectURL(url);
       };
       img.src=url;
@@ -912,14 +926,16 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
 • Colonnes obligatoires: col0=1-9, col1=10-19, col2=20-29, col3=30-39, col4=40-49, col5=50-59, col6=60-69, col7=70-79, col8=80-90
 • Un numéro appartient TOUJOURS à sa colonne de dizaine. Ex: 22→col2, 73→col7, 81→col8
 
-═══ GESTION DE L'ORIENTATION ═══
-ATTENTION: La photo peut être prise en mode paysage (téléphone couché).
-Si les chiffres sont lisibles de côté (rotés de 90°), tu dois:
-1. Identifier les 3 bandes horizontales du carton (même si elles apparaissent verticalement)
-2. Lire chaque bande comme une ligne
-3. Ne jamais lire les décorations du fond, les motifs, ou le texte hors grille comme des numéros
+═══ ORIENTATION ═══
+La photo t'est toujours envoyée en mode PORTRAIT (corrigée si nécessaire).
+Le carton est donc toujours horizontal: 3 lignes de gauche à droite.
+Ignore tout ce qui est hors de la grille (fond, décorations, motifs, texte).
 
-═══ EXEMPLE DE CARTON CORRECT ═══
+═══ EXEMPLES DE CARTONS CORRECTS ═══
+Carton PM33 N°0490 - Carpentier Nicole:
+{"grid":[[null,null,27,39,null,55,62,null,90],[3,11,null,31,43,null,null,71,null],[2,16,29,null,null,59,61,null,null]]}
+→ L1: 5 numéros (27,39,55,62,90) ✓  L2: 5 numéros (3,11,31,43,71) ✓  L3: 5 numéros (2,16,29,59,61) ✓
+
 Carton "Le Coucher du Soleil" N°0543 - Brizard Jennifer:
 {"grid":[[null,null,22,33,null,59,61,null,81],[8,10,null,36,42,null,null,73,null],[5,19,27,null,null,53,64,null,null]]}
 → L1: 5 numéros (22,33,59,61,81) ✓  L2: 5 numéros (8,10,36,42,73) ✓  L3: 5 numéros (5,19,27,53,64) ✓

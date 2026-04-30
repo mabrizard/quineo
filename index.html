@@ -812,159 +812,438 @@ function CardEditor({card, defaultColor, onSave, onCancel, onDelete, onPlay, lm}
 }
 
 // ─── SCANNER MODAL ───────────────────────────────────────────────
+
 function ScannerModal({onSaveCards, onCancel, lm}) {
-  const [image,setImage]=useState(null);
-  const [b64,setB64]=useState(null);
-  const [mt,setMt]=useState("image/jpeg");
-  const [ps,setPs]=useState(1);
-  const [cards,setCards]=useState([]);
-  const [scanning,setScanning]=useState(false);
-  const [done,setDone]=useState(false);
-  const [error,setError]=useState(null);
-  const [ai,setAi]=useState(0);
-  const [ec,setEc]=useState(null);
-  const [ev,setEv]=useState("");
-  const fRef=useRef(),cRef=useRef();
+  const [image,   setImage]   = useState(null);
+  const [imgEl,   setImgEl]   = useState(null);  // HTMLImageElement
+  const [ps,      setPs]      = useState(1);
+  const [cards,   setCards]   = useState([]);
+  const [scanning,setScanning]= useState(false);
+  const [progress,setProgress]= useState(0);     // 0-100
+  const [done,    setDone]    = useState(false);
+  const [error,   setError]   = useState(null);
+  const [ai,      setAi]      = useState(0);
+  const [ec,      setEc]      = useState(null);
+  const [ev,      setEv]      = useState('');
+  const fRef=useRef(), cRef=useRef();
 
-  const loadFile=f=>{
-    if(!f)return;
-    setImage(URL.createObjectURL(f));setDone(false);setError(null);setCards([]);
-    setMt("image/jpeg");
+  // ── Charger et normaliser l'image (EXIF + portrait) ──────────
+  const loadFile = f => {
+    if (!f) return;
+    setImage(URL.createObjectURL(f));
+    setDone(false); setError(null); setCards([]); setImgEl(null);
 
-    const reader=new FileReader();
-    reader.onload=e=>{
-      const arrayBuf=e.target.result;
-      // Detect EXIF orientation to auto-correct landscape/rotated photos
-      let orientation=1;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const arrayBuf = e.target.result;
+      // Detect EXIF orientation
+      let orientation = 1;
       try {
-        const view=new DataView(arrayBuf);
-        if(view.getUint16(0,false)===0xFFD8){
-          let offset=2;
-          while(offset<view.byteLength){
-            if(view.getUint16(offset,false)===0xFFE1){
-              if(view.getUint32(offset+4,false)===0x45786966){
-                const little=view.getUint16(offset+10,false)===0x4949;
-                const tags=view.getUint16(offset+14,little);
-                for(let i=0;i<tags;i++){
-                  if(view.getUint16(offset+16+i*12,little)===0x0112){
-                    orientation=view.getUint16(offset+16+i*12+8,little);break;
+        const view = new DataView(arrayBuf);
+        if (view.getUint16(0,false) === 0xFFD8) {
+          let off = 2;
+          while (off < view.byteLength) {
+            if (view.getUint16(off,false) === 0xFFE1) {
+              if (view.getUint32(off+4,false) === 0x45786966) {
+                const little = view.getUint16(off+10,false) === 0x4949;
+                const tags   = view.getUint16(off+14,little);
+                for (let i=0;i<tags;i++) {
+                  if (view.getUint16(off+16+i*12,little) === 0x0112) {
+                    orientation = view.getUint16(off+16+i*12+8,little); break;
                   }
                 }
               }
               break;
             }
-            offset+=2+view.getUint16(offset+2,false);
+            off += 2+view.getUint16(off+2,false);
           }
         }
-      } catch(_){}
+      } catch(_) {}
 
-      const blob=new Blob([arrayBuf]);
-      const url=URL.createObjectURL(blob);
-      const img=new Image();
-      img.onload=()=>{
-        // Max 1200px for better OCR accuracy on dense grids
-        const MAX=1200;
-        let w=img.width, h=img.height;
-        // Apply rotation for landscape EXIF
-        const rotate=(orientation>=5&&orientation<=8);
-        const nw=rotate?h:w, nh=rotate?w:h;
-        const scale=Math.min(1,MAX/Math.max(nw,nh));
-        const cw=Math.round(nw*scale), ch=Math.round(nh*scale);
+      const blob = new Blob([arrayBuf]);
+      const url  = URL.createObjectURL(blob);
+      const img  = new Image();
+      img.onload = () => {
+        const MAX = 3000; // haute résolution pour le découpage
+        const rotate = (orientation >= 5 && orientation <= 8);
+        let w = rotate ? img.height : img.width;
+        let h = rotate ? img.width  : img.height;
+        const scale = Math.min(1, MAX / Math.max(w, h));
+        const cw = Math.round(w*scale), ch = Math.round(h*scale);
 
-        const canvas=document.createElement('canvas');
-        canvas.width=cw; canvas.height=ch;
-        const ctx=canvas.getContext('2d');
+        const cv  = document.createElement('canvas');
+        cv.width  = cw; cv.height = ch;
+        const ctx = cv.getContext('2d');
         ctx.save();
-        // Apply EXIF rotation transforms
-        if(orientation===2){ctx.transform(-1,0,0,1,cw,0);}
-        else if(orientation===3){ctx.transform(-1,0,0,-1,cw,ch);}
-        else if(orientation===4){ctx.transform(1,0,0,-1,0,ch);}
-        else if(orientation===5){ctx.transform(0,1,1,0,0,0);}
-        else if(orientation===6){ctx.transform(0,1,-1,0,ch,0);}
-        else if(orientation===7){ctx.transform(0,-1,-1,0,ch,cw);}
-        else if(orientation===8){ctx.transform(0,-1,1,0,0,cw);}
-        ctx.drawImage(img,0,0,cw,ch);
+        if (orientation===2) ctx.transform(-1,0,0,1,cw,0);
+        else if (orientation===3) ctx.transform(-1,0,0,-1,cw,ch);
+        else if (orientation===4) ctx.transform(1,0,0,-1,0,ch);
+        else if (orientation===5) ctx.transform(0,1,1,0,0,0);
+        else if (orientation===6) ctx.transform(0,1,-1,0,ch,0);
+        else if (orientation===7) ctx.transform(0,-1,-1,0,ch,cw);
+        else if (orientation===8) ctx.transform(0,-1,1,0,0,cw);
+        ctx.drawImage(img, 0, 0, cw, ch);
         ctx.restore();
 
-        // If image is landscape after EXIF correction, also try rotating 90° CCW
-        // to ensure the card grid is always in portrait orientation for the AI
-        const isLandscape = cw > ch;
-        if (isLandscape) {
-          // Rotate 90° CCW: width/height swap
-          const rotCanvas = document.createElement('canvas');
-          rotCanvas.width = ch; rotCanvas.height = cw;
-          const rctx = rotCanvas.getContext('2d');
-          rctx.translate(0, cw);
-          rctx.rotate(-Math.PI/2);
-          rctx.drawImage(canvas, 0, 0);
-          const compressed = rotCanvas.toDataURL('image/jpeg', 0.90);
-          setB64(compressed.split(",")[1]);
+        // If still landscape, rotate 90° CCW
+        const finalW = cv.width, finalH = cv.height;
+        if (finalW > finalH) {
+          const rv  = document.createElement('canvas');
+          rv.width  = finalH; rv.height = finalW;
+          const rc  = rv.getContext('2d');
+          rc.translate(0, finalW);
+          rc.rotate(-Math.PI/2);
+          rc.drawImage(cv, 0, 0);
+          setImgEl(rv); // store normalized canvas
         } else {
-          const compressed = canvas.toDataURL('image/jpeg', 0.90);
-          setB64(compressed.split(",")[1]);
+          setImgEl(cv);
         }
         URL.revokeObjectURL(url);
       };
-      img.src=url;
+      img.src = url;
     };
     reader.readAsArrayBuffer(f);
   };
-  const scan=async()=>{
-    if(!b64)return;
-    setScanning(true);setError(null);
-    try {
-      const res=await fetch("/api/claude",{method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:8192,
-          messages:[{role:"user",content:[
-            {type:"image",source:{type:"base64",media_type:mt,data:b64}},
-            {type:"text",text:`Tu es un expert OCR spécialisé dans les cartons de loto quine français (90 numéros).
 
-═══ RÈGLES STRICTES ═══
-• Grille: 3 lignes × 9 colonnes
-• Chaque ligne: EXACTEMENT 5 numéros + 4 cases vides (null) — ni plus, ni moins
-• Colonnes obligatoires: col0=1-9, col1=10-19, col2=20-29, col3=30-39, col4=40-49, col5=50-59, col6=60-69, col7=70-79, col8=80-90
-• Un numéro appartient TOUJOURS à sa colonne de dizaine. Ex: 22→col2, 73→col7, 81→col8
+  // ── Découper la plaque en N cartons individuels (canvas) ──────
+  const cropCards = (canvas, n) => {
+    const W = canvas.width, H = canvas.height;
+    const crops = [];
 
-═══ ORIENTATION ═══
-La photo t'est toujours envoyée en mode PORTRAIT (corrigée si nécessaire).
-Le carton est donc toujours horizontal: 3 lignes de gauche à droite.
-Ignore tout ce qui est hors de la grille (fond, décorations, motifs, texte).
+    if (n === 1) {
+      // Carton unique: toute l'image
+      const cv = document.createElement('canvas');
+      cv.width = W; cv.height = H;
+      cv.getContext('2d').drawImage(canvas, 0, 0);
+      crops.push(cv);
+    } else {
+      // Plaques multi-cartons: grille cols×rows
+      // Standard: 2 colonnes, rows = n/2
+      const cols = 2;
+      const rows = Math.ceil(n / cols);
+      // Marges estimées: 2% de chaque côté
+      const marginX = Math.round(W * 0.01);
+      const marginY = Math.round(H * 0.01);
+      const cardW = Math.round((W - marginX*2) / cols);
+      const cardH = Math.round((H - marginY*2) / rows);
 
-═══ EXEMPLES DE CARTONS CORRECTS ═══
-Carton PM33 N°0490 - Carpentier Nicole:
+      // Ordre: colonne par colonne (haut→bas col1, puis haut→bas col2)
+      for (let col=0; col<cols; col++) {
+        for (let row=0; row<rows; row++) {
+          const x = marginX + col * cardW;
+          const y = marginY + row * cardH;
+          const cv = document.createElement('canvas');
+          cv.width  = cardW;
+          cv.height = cardH;
+          cv.getContext('2d').drawImage(canvas, x, y, cardW, cardH, 0, 0, cardW, cardH);
+          crops.push(cv);
+        }
+      }
+    }
+    return crops.slice(0, n);
+  };
+
+  // ── Analyser 1 carton (1 requête) ─────────────────────────────
+  const scanOne = async (cardCanvas, idx) => {
+    const b64 = cardCanvas.toDataURL('image/jpeg', 0.92).split(',')[1];
+    const res  = await fetch('/api/claude', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 1024,
+        messages: [{role:'user', content:[
+          {type:'image', source:{type:'base64', media_type:'image/jpeg', data:b64}},
+          {type:'text',  text:
+`Tu lis un carton de loto quine français (1 seul carton, 3 lignes × 9 colonnes).
+RÈGLES:
+• Chaque ligne: EXACTEMENT 5 numéros + 4 cases vides (null)
+• col0=1-9, col1=10-19, col2=20-29, col3=30-39, col4=40-49, col5=50-59, col6=60-69, col7=70-79, col8=80-90
+• Un numéro appartient toujours à sa colonne de dizaine
+
+EXEMPLE CORRECT:
 {"grid":[[null,null,27,39,null,55,62,null,90],[3,11,null,31,43,null,null,71,null],[2,16,29,null,null,59,61,null,null]]}
-→ L1: 5 numéros (27,39,55,62,90) ✓  L2: 5 numéros (3,11,31,43,71) ✓  L3: 5 numéros (2,16,29,59,61) ✓
 
-Carton "Le Coucher du Soleil" N°0543 - Brizard Jennifer:
-{"grid":[[null,null,22,33,null,59,61,null,81],[8,10,null,36,42,null,null,73,null],[5,19,27,null,null,53,64,null,null]]}
-→ L1: 5 numéros (22,33,59,61,81) ✓  L2: 5 numéros (8,10,36,42,73) ✓  L3: 5 numéros (5,19,27,53,64) ✓
+Réponds UNIQUEMENT avec le JSON brut (pas de texte avant/après):
+{"grid":[[...],[...],[...]]}`
+          }
+        ]}]
+      })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message||'Erreur API');
+    const raw  = (data.content?.find(b=>b.type==='text')?.text)||'';
+    const parsed = extractJSON(raw);
+    const rawGrid = (parsed.grid||[]).map(row=>
+      Array.isArray(row) ? row.map(v=>v==null?null:Number(v)) : Array(9).fill(null)
+    );
+    return validateGrid(rawGrid);
+  };
 
-═══ PROCESSUS OBLIGATOIRE ═══
-Pour chaque carton:
-1. Ignore tout ce qui est hors de la grille (fond, décorations, texte, motifs)
-2. Lis uniquement les cases de la grille
-3. Place chaque numéro dans sa colonne correcte selon sa valeur
-4. Compte: chaque ligne doit avoir exactement 5 numéros
-5. Si une ligne en a 6+: tu as lu un élément du fond par erreur → retire le
+  // ── Lancer le scan de tous les cartons ────────────────────────
+  const scan = async () => {
+    if (!imgEl) return;
+    setScanning(true); setError(null); setProgress(0); setCards([]);
+    const crops  = cropCards(imgEl, ps);
+    const results = [];
+    for (let i=0; i<crops.length; i++) {
+      try {
+        const grid = await scanOne(crops[i], i);
+        results.push({id:i, validated:false, label:'', grid});
+      } catch(e) {
+        results.push({id:i, validated:false, label:'', grid:emptyGrid(), scanError:e.message});
+      }
+      setProgress(Math.round(((i+1)/crops.length)*100));
+      setCards([...results]);
+    }
+    setScanning(false); setDone(true); setAi(0);
+  };
 
-═══ NOMBRE DE CARTONS ═══
-${ps} carton(s) à analyser.
-${ps>1?"Ordre: colonne par colonne (haut→bas col1, puis haut→bas col2, etc.)":""}
+  // ── Valider / éditer ──────────────────────────────────────────
+  const commitEdit = () => {
+    if (!ec) return;
+    const [cid,r,c] = ec;
+    const num = ev.trim()==='' ? null : parseInt(ev,10);
+    setCards(prev=>prev.map(card=>card.id!==cid?card:{...card,
+      grid:card.grid.map((row,ri)=>ri!==r?row:row.map((v,ci)=>ci!==c?v:(isNaN(num)?null:num)))
+    }));
+    setEc(null);
+  };
 
-FORMAT: JSON brut uniquement, aucun texte:
-{"cards":[{"id":0,"grid":[[null,12,null,null,35,null,63,null,82],[3,null,22,31,null,55,null,71,null],[null,17,null,38,null,56,null,null,89]]}]}`}
-          ]}]})});
-      if(!res.ok)throw new Error(`Erreur ${res.status}`);
-      const data=await res.json();
-      if(data.error)throw new Error(data.error.message);
-      const raw=_optionalChain([data, 'access', _8 => _8.content, 'optionalAccess', _9 => _9.find, 'call', _10 => _10(b=>b.type==="text"), 'optionalAccess', _11 => _11.text])||"";
-      const parsed=extractJSON(raw);
-      if(!_optionalChain([parsed, 'access', _12 => _12.cards, 'optionalAccess', _13 => _13.length]))throw new Error("Aucun carton détecté");
-      setCards(parsed.cards.map((c,i)=>{
-        const rawGrid=(c.grid||[]).map(row=>Array.isArray(row)?row.map(v=>v==null?null:Number(v)):Array(9).fill(null));
+  const ac  = cards[ai];
+  const bg  = lm?'#fff':'#1a1548';
+  const brd = lm?'#e5e7eb':'rgba(245,197,24,.2)';
 
-// Validate and auto-correct a scanned grid
+  return (
+    React.createElement('div', {
+      style:{position:'fixed',inset:0,background:'rgba(0,0,0,.8)',zIndex:200,
+        display:'flex',alignItems:'flex-end',justifyContent:'center',backdropFilter:'blur(6px)'},
+      onClick:onCancel},
+      React.createElement('div', {
+        style:{background:bg,border:`2px solid ${brd}`,borderRadius:'22px 22px 0 0',
+          padding:`12px 16px max(28px,env(safe-area-inset-bottom))`,
+          width:'100%',maxWidth:600,maxHeight:'96dvh',overflowY:'auto'},
+        onClick:e=>e.stopPropagation()},
+
+        React.createElement('div', {style:{width:44,height:5,borderRadius:99,
+          background:lm?'#e5e7eb':'rgba(255,255,255,.15)',margin:'0 auto 14px'}}),
+        React.createElement('div', {style:{fontFamily:"'Fredoka One',cursive",fontSize:17,
+          color:lm?'#1e293b':'#f5c518',marginBottom:14}}, '📸 Scanner une plaque'),
+
+        /* Sélecteur nombre de cartons */
+        React.createElement('div', {style:{display:'flex',gap:6,marginBottom:12}},
+          [1,6,12,24].map(s=>
+            React.createElement('button', {key:s, onClick:()=>{setPs(s);setDone(false);setCards([]);},
+              style:{flex:1,padding:'9px',borderRadius:8,cursor:'pointer',
+                fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:12,
+                border:`2px solid ${ps===s?(lm?'#2563eb':'#f5c518'):(lm?'#e5e7eb':'rgba(255,255,255,.1)')}`,
+                background:ps===s?(lm?'#eff6ff':'rgba(245,197,24,.08)'):(lm?'#f9fafb':'rgba(255,255,255,.03)'),
+                color:ps===s?(lm?'#2563eb':'#f5c518'):(lm?'#6b7280':'rgba(255,255,255,.4)'),
+                WebkitTapHighlightColor:'transparent'}},
+              `${s} c.`
+            )
+          )
+        ),
+
+        /* Zone image */
+        !image
+          ? React.createElement('div', {
+              style:{border:`2px dashed ${lm?'#d1d5db':'rgba(255,255,255,.15)'}`,borderRadius:10,
+                padding:'22px',textAlign:'center',cursor:'pointer',
+                background:lm?'#f9fafb':'rgba(255,255,255,.02)',marginBottom:10},
+              onClick:()=>fRef.current.click()},
+              React.createElement('div', {style:{fontSize:32}}, '🎴'),
+              React.createElement('div', {style:{fontSize:13,color:lm?'#6b7280':'rgba(255,255,255,.35)',marginTop:6,fontWeight:600}},
+                'Importer une photo')
+            )
+          : React.createElement('img', {src:image, alt:'',
+              style:{width:'100%',maxHeight:160,objectFit:'contain',borderRadius:8,
+                border:`1px solid ${lm?'#e5e7eb':'rgba(255,255,255,.1)'}`,marginBottom:10,
+                background:lm?'#f9fafb':'rgba(0,0,0,.2)'}}),
+
+        /* Inputs fichier cachés */
+        React.createElement('input', {ref:fRef, type:'file', accept:'image/*',
+          onChange:e=>loadFile(e.target.files[0]), style:{display:'none'}}),
+        React.createElement('input', {ref:cRef, type:'file', accept:'image/*', capture:'environment',
+          onChange:e=>loadFile(e.target.files[0]), style:{display:'none'}}),
+
+        /* Boutons action */
+        React.createElement('div', {style:{display:'flex',gap:7,marginBottom:10}},
+          React.createElement('button', {
+            style:{...ghostBs(lm),flex:1,padding:'9px',fontSize:12},
+            onClick:()=>cRef.current.click()}, '📸 Caméra'),
+          React.createElement('button', {
+            style:{...ghostBs(lm),flex:1,padding:'9px',fontSize:12},
+            onClick:()=>fRef.current.click()}, '🖼️ Galerie'),
+          image&&!scanning&&imgEl
+            ? React.createElement('button', {
+                style:{...primaryBs,flex:2,padding:'9px',fontSize:12},
+                onClick:scan}, '✨ Analyser')
+            : image&&!imgEl
+              ? React.createElement('button', {
+                  style:{...ghostBs(lm),flex:2,padding:'9px',fontSize:12,opacity:.6},
+                  disabled:true}, '⏳ Chargement…')
+              : scanning
+                ? React.createElement('button', {
+                    style:{...primaryBs,flex:2,padding:'9px',fontSize:12,opacity:.7},
+                    disabled:true}, `⏳ ${progress}%`)
+                : null
+        ),
+
+        /* Popup analyse en cours */
+        scanning&&React.createElement('div', {
+          style:{position:'fixed',inset:0,zIndex:300,display:'flex',
+            alignItems:'center',justifyContent:'center',
+            background:'rgba(0,0,0,.65)',backdropFilter:'blur(4px)'}},
+          React.createElement('div', {
+            style:{background:lm?'#fff':'#1e1b4b',borderRadius:18,padding:'28px 32px',
+              textAlign:'center',boxShadow:'0 20px 60px rgba(0,0,0,.4)',minWidth:260,
+              border:`2px solid ${lm?'#e5e7eb':'rgba(245,197,24,.3)'}`}},
+            React.createElement('div', {style:{fontSize:40,marginBottom:10,
+              animation:'spin 1.2s linear infinite',display:'inline-block'}}, '🔍'),
+            React.createElement('div', {style:{fontFamily:"'Fredoka One',cursive",fontSize:18,
+              color:lm?'#1e293b':'#f5c518',marginBottom:6}},
+              `Carton ${Math.min(progress===100?cards.length:Math.ceil(progress/100*ps),ps)} / ${ps}`),
+            React.createElement('div', {style:{marginBottom:12}},
+              React.createElement('div', {style:{width:200,height:6,background:lm?'#e5e7eb':'rgba(255,255,255,.15)',
+                borderRadius:99,overflow:'hidden',margin:'0 auto'}},
+                React.createElement('div', {style:{height:6,width:`${progress}%`,
+                  background:'linear-gradient(90deg,#f5c518,#ff4fa3)',
+                  borderRadius:99,transition:'width .3s'}})
+              )
+            ),
+            React.createElement('div', {style:{fontSize:12,color:lm?'#6b7280':'rgba(255,255,255,.5)'}},
+              'Analyse carton par carton…')
+          )
+        ),
+
+        /* Erreur globale */
+        !scanning&&error&&React.createElement('div', {
+          style:{background:lm?'#fef2f2':'rgba(255,79,163,.07)',
+            border:`1px solid ${lm?'#fca5a5':'rgba(255,79,163,.3)'}`,
+            borderRadius:8,padding:'8px 10px',color:lm?'#dc2626':'#ff4fa3',
+            fontSize:11,marginBottom:10,lineHeight:1.5}},
+          '⚠️ ', error),
+
+        /* Validation carton par carton */
+        !scanning&&done&&ac&&React.createElement(React.Fragment, null,
+
+          /* Onglets cartons */
+          cards.length>1&&React.createElement('div', {style:{display:'flex',gap:5,flexWrap:'wrap',marginBottom:10}},
+            cards.map((c,i)=>
+              React.createElement('button', {key:i, onClick:()=>setAi(i),
+                style:{padding:'4px 10px',borderRadius:6,fontSize:11,fontWeight:700,cursor:'pointer',
+                  border:`1.5px solid ${ai===i?(lm?'#2563eb':'#f5c518'):c.validated?(lm?'#16a34a':'#00e676'):c.scanError?(lm?'#f59e0b':'#fbbf24'):(lm?'#e5e7eb':'rgba(255,255,255,.1)')}`,
+                  background:ai===i?(lm?'#eff6ff':'rgba(245,197,24,.08)'):c.validated?(lm?'#dcfce7':'rgba(0,230,118,.08)'):c.scanError?(lm?'#fef9c3':'rgba(245,197,24,.07)'):(lm?'#f9fafb':'rgba(255,255,255,.02)'),
+                  color:ai===i?(lm?'#2563eb':'#f5c518'):c.validated?(lm?'#16a34a':'#00e676'):c.scanError?(lm?'#d97706':'#fbbf24'):(lm?'#6b7280':'rgba(255,255,255,.4)'),
+                  WebkitTapHighlightColor:'transparent'}},
+                `C${i+1}`, c.validated?' ✓':c.scanError?' ⚠':''
+              )
+            )
+          ),
+
+          /* Erreur de ce carton */
+          ac.scanError&&React.createElement('div', {
+            style:{background:lm?'#fef9c3':'rgba(245,197,24,.1)',
+              border:`1px solid ${lm?'#fcd34d':'rgba(245,197,24,.3)'}`,
+              borderRadius:8,padding:'7px 10px',fontSize:11,
+              color:lm?'#92400e':'#fbbf24',marginBottom:8}},
+            '⚠️ Erreur sur ce carton — vérifiez et corrigez manuellement.'),
+
+          /* Champ nom */
+          React.createElement('div', {style:{marginBottom:10}},
+            React.createElement('div', {style:{fontSize:9,color:lm?'#9ca3af':'rgba(255,255,255,.35)',
+              fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:4}}, 'Nom du carton'),
+            React.createElement('input', {type:'text',placeholder:`Carton ${ai+1}`,value:ac.label,
+              onChange:e=>setCards(prev=>prev.map((c,i)=>i===ai?{...c,label:e.target.value}:c)),
+              maxLength:20,
+              style:{display:'block',width:'100%',
+                background:lm?'#f9fafb':'rgba(255,255,255,.06)',
+                border:`2px solid ${lm?'#e5e7eb':'rgba(255,255,255,.15)'}`,
+                borderRadius:9,color:lm?'#1e293b':'#fff',
+                fontFamily:"'Nunito',sans-serif",fontSize:15,fontWeight:700,
+                padding:'9px 12px',outline:'none'}})
+          ),
+
+          /* Grille éditable */
+          React.createElement('div', {style:{overflowX:'auto',marginBottom:8}},
+            React.createElement('table', {style:{width:'100%',borderCollapse:'collapse',minWidth:320}},
+              React.createElement('thead',null,
+                React.createElement('tr',null,
+                  React.createElement('th',{style:{width:'5%',background:lm?'#f9fafb':'rgba(0,0,0,.2)',fontSize:7,color:lm?'#9ca3af':'rgba(255,255,255,.3)',padding:'2px'}}),
+                  COL_LABELS.map((l,i)=>React.createElement('th',{key:i,
+                    style:{fontSize:6,color:lm?'#6b7280':'rgba(255,255,255,.4)',padding:'2px 1px',
+                      textAlign:'center',background:lm?'#f9fafb':'rgba(0,0,0,.2)',fontWeight:800}},l))
+                )
+              ),
+              React.createElement('tbody',null,
+                ac.grid.map((row,r)=>
+                  React.createElement('tr',{key:r},
+                    React.createElement('td',{style:{background:lm?'#f9fafb':'rgba(0,0,0,.2)',
+                      fontSize:8,textAlign:'center',color:lm?'#9ca3af':'rgba(255,255,255,.3)',fontWeight:800}},`L${r+1}`),
+                    row.map((cell,c)=>{
+                      const isE = ec&&ec[0]===ac.id&&ec[1]===r&&ec[2]===c;
+                      return React.createElement('td',{key:c,
+                        style:{border:`1px solid ${lm?'#e5e7eb':'rgba(255,255,255,.1)'}`,
+                          textAlign:'center',
+                          background:cell===null?(lm?'#f0f9ff':'rgba(255,255,255,.02)'):(lm?'#fff':'rgba(255,255,255,.07)'),
+                          cursor:'pointer',minWidth:32,height:32},
+                        onClick:()=>{setEc([ac.id,r,c]);setEv(cell!==null?String(cell):'');}},
+                        isE
+                          ? React.createElement('input',{autoFocus:true,
+                              style:{width:'100%',border:'none',background:'transparent',textAlign:'center',
+                                fontSize:12,fontWeight:800,padding:'3px 0',outline:'none',
+                                color:lm?'#1e293b':'#fff'},
+                              value:ev,onChange:e=>setEv(e.target.value),
+                              onKeyDown:e=>{if(e.key==='Enter'||e.key==='Tab'){e.preventDefault();commitEdit();}if(e.key==='Escape')setEc(null);},
+                              onBlur:commitEdit})
+                          : React.createElement('span',{
+                              style:{display:'inline-flex',alignItems:'center',justifyContent:'center',
+                                width:24,height:24,borderRadius:'50%',fontSize:10,fontWeight:800,
+                                color:cell!==null?(lm?'#1e293b':'rgba(255,255,255,.85)'):'transparent',
+                                border:cell!==null?`1px solid ${lm?'#e5e7eb':'rgba(255,255,255,.15)'}`:'none'}},
+                              cell!==null?cell:'')
+                      );
+                    })
+                  )
+                )
+              )
+            )
+          ),
+
+          /* Compteur + Valider */
+          React.createElement('div', {style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}},
+            React.createElement('span', {style:{fontSize:11,color:lm?'#6b7280':'rgba(255,255,255,.4)',fontWeight:600}},
+              ac.grid.flat().filter(v=>v!==null).length, '/15'),
+            React.createElement('button', {
+              onClick:()=>{
+                setCards(prev=>prev.map((c,i)=>i===ai?{...c,validated:!ac.validated}:c));
+                if(!ac.validated && ai<cards.length-1) setTimeout(()=>setAi(i=>i+1),300);
+              },
+              style:{padding:'8px 18px',borderRadius:8,fontWeight:700,fontSize:13,cursor:'pointer',
+                border:`1.5px solid ${ac.validated?(lm?'#16a34a':'#00e676'):(lm?'#f59e0b':'#f5c518')}`,
+                background:ac.validated?(lm?'#dcfce7':'rgba(0,230,118,.08)'):(lm?'#fffbeb':'rgba(245,197,24,.08)'),
+                color:ac.validated?(lm?'#16a34a':'#00e676'):(lm?'#d97706':'#f5c518'),
+                WebkitTapHighlightColor:'transparent'}},
+              ac.validated?'✅ Validé':'✓ Valider')
+          )
+        ),
+
+        /* Boutons bas */
+        React.createElement('div', {style:{display:'flex',gap:8}},
+          React.createElement('button', {style:ghostBs(lm), onClick:onCancel}, 'Annuler'),
+          done&&cards.length>0&&cards.every(c=>c.validated)&&
+            React.createElement('button', {style:primaryBs,
+              onClick:()=>onSaveCards(cards)},
+              `✅ Importer ${cards.length} carton${cards.length>1?'s':''}`)
+        )
+      )
+    )
+  );
+}
+
+
 function validateGrid(grid) {
   if (!Array.isArray(grid) || grid.length !== 3) return grid;
   const corrected = [Array(9).fill(null), Array(9).fill(null), Array(9).fill(null)];
@@ -999,185 +1278,6 @@ function validateGrid(grid) {
   }
   return corrected;
 }
-
-        const validatedGrid=validateGrid(rawGrid);
-        return {id:i,validated:false,label:"",grid:validatedGrid};
-      }));
-      setDone(true);setAi(0);
-    } catch(e){setError(e.message);setDone(true);setCards(Array.from({length:ps},(_,i)=>({id:i,grid:emptyGrid(),validated:false,label:""})));}
-    finally{setScanning(false);}
-  };
-  const commitEdit=()=>{
-    if(!ec)return;
-    const[cid,r,c]=ec,num=ev.trim()===""?null:parseInt(ev,10);
-    setCards(prev=>prev.map(card=>card.id!==cid?card:{...card,grid:card.grid.map((row,ri)=>ri!==r?row:row.map((v,ci)=>ci!==c?v:(isNaN(num)?null:num)))}));
-    setEc(null);
-  };
-  const ac=cards[ai];
-  const shBg=lm?"#fff":"#1a1548",shBrd=lm?"#e5e7eb":"rgba(245,197,24,.2)";
-
-  return (
-    React.createElement('div', { style: {position:"fixed",inset:0,background:"rgba(0,0,0,.8)",zIndex:200,display:"flex",
-      alignItems:"flex-end",justifyContent:"center",backdropFilter:"blur(6px)"}, onClick: onCancel,}
-      , React.createElement('div', { style: {background:shBg,border:`2px solid ${shBrd}`,borderRadius:"22px 22px 0 0",
-        padding:"12px 16px max(28px,env(safe-area-inset-bottom))",
-        width:"100%",maxWidth:600,maxHeight:"96dvh",overflowY:"auto"}, onClick: e=>e.stopPropagation(),}
-        , React.createElement('div', { style: {width:44,height:5,borderRadius:99,background:lm?"#e5e7eb":"rgba(255,255,255,.15)",margin:"0 auto 14px"},})
-        , React.createElement('div', { style: {fontFamily:"'Fredoka One',cursive",fontSize:17,color:lm?"#1e293b":"#f5c518",marginBottom:14},}, "📸 Scanner une plaque"   )
-        , React.createElement('input', { ref: fRef, type: "file", accept: "image/*", onChange: e=>loadFile(e.target.files[0]), style: {display:"none"},})
-        , React.createElement('input', { ref: cRef, type: "file", accept: "image/*", capture: "environment", onChange: e=>loadFile(e.target.files[0]), style: {display:"none"},})
-
-        , React.createElement('div', { style: {display:"flex",gap:6,marginBottom:12},}
-          , [1,6,12,24].map(s=>(
-            React.createElement('button', { key: s, onClick: ()=>{setPs(s);setDone(false);setCards([]);},
-              style: {flex:1,padding:"9px",borderRadius:8,cursor:"pointer",
-                fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:12,
-                border:`2px solid ${ps===s?(lm?"#2563eb":"#f5c518"):(lm?"#e5e7eb":"rgba(255,255,255,.1)")}`,
-                background:ps===s?(lm?"#eff6ff":"rgba(245,197,24,.08)"):(lm?"#f9fafb":"rgba(255,255,255,.03)"),
-                color:ps===s?(lm?"#2563eb":"#f5c518"):(lm?"#6b7280":"rgba(255,255,255,.4)"),
-                WebkitTapHighlightColor:"transparent"},}
-              , s, " c."
-            )
-          ))
-        )
-
-        , !image
-          ?React.createElement('div', { style: {border:`2px dashed ${lm?"#d1d5db":"rgba(255,255,255,.15)"}`,borderRadius:10,
-              padding:"22px",textAlign:"center",cursor:"pointer",
-              background:lm?"#f9fafb":"rgba(255,255,255,.02)",marginBottom:10},
-              onClick: ()=>fRef.current.click(),}
-              , React.createElement('div', { style: {fontSize:32},}, "🎴")
-              , React.createElement('div', { style: {fontSize:13,color:lm?"#6b7280":"rgba(255,255,255,.35)",marginTop:6,fontWeight:600},}, "Importer une photo"  )
-            )
-          :React.createElement('img', { src: image, alt: "", style: {width:"100%",maxHeight:160,objectFit:"contain",borderRadius:8,
-              border:`1px solid ${lm?"#e5e7eb":"rgba(255,255,255,.1)"}`,marginBottom:10,
-              background:lm?"#f9fafb":"rgba(0,0,0,.2)"},})
-
-        , React.createElement('div', { style: {display:"flex",gap:7,marginBottom:10},}
-          , React.createElement('button', { style: {...ghostBs(lm),flex:1,padding:"9px",fontSize:12}, onClick: ()=>cRef.current.click(),}, "📸 Caméra" )
-          , React.createElement('button', { style: {...ghostBs(lm),flex:1,padding:"9px",fontSize:12}, onClick: ()=>fRef.current.click(),}, "🖼️ Galerie" )
-          , image&&!scanning&&React.createElement('button', { style: {...primaryBs,flex:2,padding:"9px",fontSize:12}, onClick: scan,}, "✨ Analyser" )
-          , scanning&&React.createElement('button', { style: {...primaryBs,flex:2,padding:"9px",fontSize:12,opacity:.7}, disabled: true,}, "⏳ Analyse…" )
-        )
-        /* Popup analyse en cours */
-        , scanning&&React.createElement('div', { style: {position:"fixed",inset:0,zIndex:300,
-            display:"flex",alignItems:"center",justifyContent:"center",
-            background:"rgba(0,0,0,.6)",backdropFilter:"blur(4px)"},}
-          , React.createElement('div', { style: {background:lm?"#fff":"#1e1b4b",borderRadius:18,padding:"28px 32px",
-              textAlign:"center",boxShadow:"0 20px 60px rgba(0,0,0,.4)",
-              border:`2px solid ${lm?"#e5e7eb":"rgba(245,197,24,.3)"}`},}
-            , React.createElement('div', { style: {fontSize:42,marginBottom:12,animation:"spin 1s linear infinite",display:"inline-block"},}, "🔍")
-            , React.createElement('div', { style: {fontFamily:"'Fredoka One',cursive",fontSize:20,
-                color:lm?"#1e293b":"#f5c518",marginBottom:6},}, "Analyse en cours…")
-            , React.createElement('div', { style: {fontSize:13,color:lm?"#6b7280":"rgba(255,255,255,.5)"},},
-              "L'IA lit vos cartons, merci de patienter"
-            )
-          )
-        )
-        , !scanning&&error&&React.createElement('div', { style: {background:lm?"#fef2f2":"rgba(255,79,163,.07)",border:`1px solid ${lm?"#fca5a5":"rgba(255,79,163,.3)"}`,
-          borderRadius:8,padding:"8px 10px",color:lm?"#dc2626":"#ff4fa3",fontSize:11,marginBottom:10,lineHeight:1.5},}, "⚠️ "
-           , error
-        )
-
-        , !scanning&&done&&ac&&(
-          React.createElement(React.Fragment, null
-            , cards.length>1&&(
-              React.createElement('div', { style: {display:"flex",gap:5,flexWrap:"wrap",marginBottom:10},}
-                , cards.map((c,i)=>(
-                  React.createElement('button', { key: i, onClick: ()=>setAi(i),
-                    style: {padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",
-                      border:`1.5px solid ${ai===i?(lm?"#2563eb":"#f5c518"):c.validated?(lm?"#16a34a":"#00e676"):(lm?"#e5e7eb":"rgba(255,255,255,.1)")}`,
-                      background:ai===i?(lm?"#eff6ff":"rgba(245,197,24,.08)"):c.validated?(lm?"#dcfce7":"rgba(0,230,118,.08)"):(lm?"#f9fafb":"rgba(255,255,255,.02)"),
-                      color:ai===i?(lm?"#2563eb":"#f5c518"):c.validated?(lm?"#16a34a":"#00e676"):(lm?"#6b7280":"rgba(255,255,255,.4)"),
-                      WebkitTapHighlightColor:"transparent"},}, "C"
-                    , i+1, c.validated?" ✓":""
-                  )
-                ))
-              )
-            )
-            , React.createElement('div', { style: {overflowX:"auto",marginBottom:8},}
-              , React.createElement('table', { style: {width:"100%",borderCollapse:"collapse",minWidth:320},}
-                , React.createElement('thead', null, React.createElement('tr', null
-                  , React.createElement('th', { style: {width:"5%",background:lm?"#f9fafb":"rgba(0,0,0,.2)",fontSize:7,color:lm?"#9ca3af":"rgba(255,255,255,.3)",padding:"2px"},})
-                  , COL_LABELS.map((l,i)=>React.createElement('th', { key: i, style: {fontSize:6,color:BALL_COLORS[i],padding:"2px 1px",textAlign:"center",background:lm?"#f9fafb":"rgba(0,0,0,.2)",fontWeight:800},}, l))
-                ))
-                , React.createElement('tbody', null, ac.grid.map((row,r)=>(
-                  React.createElement('tr', { key: r,}, [
-                    React.createElement('td', { key: "l", style: {background:lm?"#f9fafb":"rgba(0,0,0,.2)",fontSize:8,textAlign:"center",color:lm?"#9ca3af":"rgba(255,255,255,.3)",fontWeight:800},}, "L", r+1),
-                    ...row.map((cell,c)=>{
-                      const isE=ec&&ec[0]===ac.id&&ec[1]===r&&ec[2]===c;
-                      return(
-                        React.createElement('td', { key: c, style: {border:`1px solid ${lm?"#e5e7eb":"rgba(255,255,255,.1)"}`,textAlign:"center",
-                          background:cell===null?(lm?"#f0f9ff":"rgba(255,255,255,.02)"):(lm?"#fff":"rgba(255,255,255,.07)"),
-                          cursor:"pointer",minWidth:32,height:32},
-                          onClick: ()=>{setEc([ac.id,r,c]);setEv(cell!==null?String(cell):"");},}
-                          , isE
-                            ?React.createElement('input', { autoFocus: true, style: {width:"100%",border:"none",background:"transparent",textAlign:"center",
-                                fontSize:12,fontWeight:800,padding:"3px 0",outline:"none",color:lm?"#1e293b":"#fff"},
-                                value: ev, onChange: e=>setEv(e.target.value),
-                                onKeyDown: e=>{if(e.key==="Enter"||e.key==="Tab"){e.preventDefault();commitEdit();}if(e.key==="Escape")setEc(null);},
-                                onBlur: commitEdit,})
-                            :React.createElement('span', { style: {display:"inline-flex",alignItems:"center",justifyContent:"center",
-                                width:24,height:24,borderRadius:"50%",fontSize:10,fontWeight:800,
-                                color:cell!==null?(lm?"#1e293b":"rgba(255,255,255,.85)"):"transparent",
-                                border:cell!==null?`1px solid ${lm?"#e5e7eb":"rgba(255,255,255,.15)"}` :"none"},}
-                              , cell!==null?cell:""
-                            )
-                        )
-                      );
-                    })
-                  ])
-                )))
-              )
-            )
-            /* Nom du carton */
-            , React.createElement('div', { style: {marginBottom:10},}
-              , React.createElement('div', { style: {fontSize:9,color:lm?"#9ca3af":"rgba(255,255,255,.35)",fontWeight:700,
-                  letterSpacing:1.5,textTransform:"uppercase",marginBottom:4},}, "Nom du carton")
-              , React.createElement('input', { 
-                  type:"text",
-                  placeholder:`Carton ${ai+1}`,
-                  value:ac.label,
-                  onChange:e=>setCards(prev=>prev.map((c,i)=>i===ai?{...c,label:e.target.value}:c)),
-                  maxLength:20,
-                  style:{display:"block",width:"100%",
-                    background:lm?"#f9fafb":"rgba(255,255,255,.06)",
-                    border:`2px solid ${lm?"#e5e7eb":"rgba(255,255,255,.15)"}`,
-                    borderRadius:9,color:lm?"#1e293b":"#fff",
-                    fontFamily:"'Nunito',sans-serif",fontSize:16,fontWeight:700,
-                    padding:"9px 12px",outline:"none"},}
-              )
-            )
-            , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12},}
-              , React.createElement('span', { style: {fontSize:11,color:lm?"#6b7280":"rgba(255,255,255,.4)",fontWeight:600},}, ac.grid.flat().filter(v=>v!==null).length, "/15")
-              , React.createElement('button', { onClick: ()=>{
-                  setCards(prev=>prev.map((c,i)=>i===ai?{...c,validated:!ac.validated}:c));
-                  if (!ac.validated && ai<cards.length-1) setTimeout(()=>setAi(i=>i+1),300);
-                },
-                style: {padding:"8px 18px",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",
-                  border:`1.5px solid ${ac.validated?(lm?"#16a34a":"#00e676"):(lm?"#f59e0b":"#f5c518")}`,
-                  background:ac.validated?(lm?"#dcfce7":"rgba(0,230,118,.08)"):(lm?"#fffbeb":"rgba(245,197,24,.08)"),
-                  color:ac.validated?(lm?"#16a34a":"#00e676"):(lm?"#d97706":"#f5c518"),
-                  WebkitTapHighlightColor:"transparent"},}
-                , ac.validated?"✅ Validé":"✓ Valider"
-              )
-            )
-          )
-        )
-        , React.createElement('div', { style: {display:"flex",gap:8},}
-          , React.createElement('button', { style: ghostBs(lm), onClick: onCancel,}, "Annuler")
-          , done&&cards.every(c=>c.validated)&&(
-            React.createElement('button', { style: primaryBs, onClick: ()=>onSaveCards(cards),}, "✅ Importer "
-                , cards.length, " carton" , cards.length>1?"s":""
-            )
-          )
-        )
-      )
-    )
-  );
-}
-
-// ─── SETTINGS MODAL ──────────────────────────────────────────────
 function SettingsModal({settings, onSave, onClose, lm}) {
   const [marker,setMarker]=useState(settings.marker);
   const [mc,setMc]=useState(settings.markerColor);

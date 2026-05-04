@@ -352,8 +352,18 @@ function LotoCard({card, ds, mode, onToggleActive, onEdit, markerId, markerColor
         position:"relative"},}
         , React.createElement('div', { style: {position:"absolute",top:0,left:0,right:0,height:3,background:"linear-gradient(90deg,#ff4fa3,#00e5ff,#f5c518)"},})
         , React.createElement('div', { style: {background:headerBg,padding:"3px 6px",display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:3},}
-          , React.createElement('span', { style: {fontFamily:"'Fredoka One',cursive",fontSize:10,color:headerTxt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"70%"},}, label)
-          , React.createElement('span', { style: {fontSize:9,flexShrink:0},}, st.won?"🏆":st.alert?(st.missingNums&&st.missingNums.length>0?"⚠️→"+st.missingNums.join("·"):"⚠️"):"")
+          , React.createElement('span', { style: {fontFamily:"'Fredoka One',cursive",fontSize:9,color:headerTxt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"45%"},}, label)
+          , !st.won&&(()=>{
+              const g = !st.goals.quine.won ? st.goals.quine : !st.goals.double.won ? st.goals.double : st.goals.full;
+              const gl = !st.goals.quine.won ? "1L" : !st.goals.double.won ? "2L" : "Plein";
+              return React.createElement('span', { style: {fontFamily:"'Fredoka One',cursive",fontSize:8,
+                  color:g.alert?"#fbbf24":"rgba(255,255,255,.85)",textAlign:"right",lineHeight:1.3,flexShrink:0}},
+                g.alert?"⚠️ ":"", gl,": ",g.missing," rest."
+                , g.missingNums&&g.missingNums.length>0&&React.createElement('span', null,
+                  " →", g.missingNums.slice(0,3).join("·"), g.missingNums.length>3?"…":"")
+              );
+            })()
+          , st.won&&React.createElement('span', { style: {fontSize:9,flexShrink:0},}, "🏆")
         )
         , React.createElement(CardGrid, { grid: card.grid, ds: ds, cardColor: card.color, markerId: markerId, markerColor: markerColor,
           fontSize: 7, lm: lm, wonLines: wonLines, onToggle: handleToggle,})
@@ -813,194 +823,265 @@ function CardEditor({card, defaultColor, onSave, onCancel, onDelete, onPlay, lm}
 
 // ─── SCANNER MODAL ───────────────────────────────────────────────
 
-function ScannerModal({onSaveCards, onCancel, lm}) {
-  const [image,   setImage]   = useState(null);
-  const [imgEl,   setImgEl]   = useState(null);  // HTMLImageElement
-  const [ps,      setPs]      = useState(1);
-  const [cards,   setCards]   = useState([]);
-  const [scanning,setScanning]= useState(false);
-  const [progress,setProgress]= useState(0);     // 0-100
-  const [done,    setDone]    = useState(false);
-  const [error,   setError]   = useState(null);
-  const [ai,      setAi]      = useState(0);
-  const [ec,      setEc]      = useState(null);
-  const [ev,      setEv]      = useState('');
-  const fRef=useRef(), cRef=useRef();
 
-  // ── Charger et normaliser l'image (EXIF + portrait) ──────────
-  const loadFile = f => {
-    if (!f) return;
-    setImage(URL.createObjectURL(f));
-    setDone(false); setError(null); setCards([]); setImgEl(null);
+// ─── TESSERACT SCANNER ───────────────────────────────────────────
+// Loads Tesseract.js once, caches worker globally
+let _tessWorker = null;
+let _tessReady  = false;
+let _tessLoading = false;
+const _tessQueue = [];
 
-    const reader = new FileReader();
-    reader.onload = e => {
-      const arrayBuf = e.target.result;
-      // Detect EXIF orientation
-      let orientation = 1;
+async function getTessWorker(onProgress) {
+  if (_tessReady) return _tessWorker;
+  return new Promise((resolve, reject) => {
+    _tessQueue.push({resolve, reject});
+    if (_tessLoading) return;
+    _tessLoading = true;
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+    script.onload = async () => {
       try {
-        const view = new DataView(arrayBuf);
-        if (view.getUint16(0,false) === 0xFFD8) {
-          let off = 2;
-          while (off < view.byteLength) {
-            if (view.getUint16(off,false) === 0xFFE1) {
-              if (view.getUint32(off+4,false) === 0x45786966) {
-                const little = view.getUint16(off+10,false) === 0x4949;
-                const tags   = view.getUint16(off+14,little);
-                for (let i=0;i<tags;i++) {
-                  if (view.getUint16(off+16+i*12,little) === 0x0112) {
-                    orientation = view.getUint16(off+16+i*12+8,little); break;
-                  }
+        const worker = await Tesseract.createWorker('fra', 1, {
+          workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
+          corePath:   'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core.wasm.js',
+          logger: m => { if (m.status === 'recognizing text' && onProgress) onProgress(m.progress); }
+        });
+        await worker.setParameters({
+          tessedit_char_whitelist: '0123456789',
+          tessedit_pageseg_mode: '7',  // single line
+        });
+        _tessWorker = worker;
+        _tessReady  = true;
+        _tessQueue.forEach(q => q.resolve(worker));
+        _tessQueue.length = 0;
+      } catch(e) {
+        _tessQueue.forEach(q => q.reject(e));
+        _tessQueue.length = 0;
+      }
+    };
+    script.onerror = e => { _tessQueue.forEach(q => q.reject(new Error('Echec chargement Tesseract'))); };
+    document.head.appendChild(script);
+  });
+}
+
+// Read a single cell canvas → number or null
+async function readCell(worker, cellCanvas) {
+  // Preprocess: invert if needed, enhance contrast
+  const w = cellCanvas.width, h = cellCanvas.height;
+  const pre = document.createElement('canvas');
+  pre.width = Math.max(w*2, 60); pre.height = Math.max(h*2, 60);
+  const ctx = pre.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, pre.width, pre.height);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(cellCanvas, 0, 0, pre.width, pre.height);
+
+  // Check average brightness - if dark bg (inverted), invert
+  const imgData = ctx.getImageData(0, 0, pre.width, pre.height);
+  let brightness = 0;
+  for (let i = 0; i < imgData.data.length; i+=4)
+    brightness += (imgData.data[i] + imgData.data[i+1] + imgData.data[i+2]) / 3;
+  brightness /= (imgData.data.length / 4);
+  if (brightness < 128) {
+    // Invert
+    for (let i = 0; i < imgData.data.length; i+=4) {
+      imgData.data[i]   = 255 - imgData.data[i];
+      imgData.data[i+1] = 255 - imgData.data[i+1];
+      imgData.data[i+2] = 255 - imgData.data[i+2];
+    }
+    ctx.putImageData(imgData, 0, 0);
+  }
+
+  try {
+    const { data: { text } } = await worker.recognize(pre);
+    const clean = text.replace(/\D/g, '').trim();
+    if (!clean) return null;
+    const n = parseInt(clean, 10);
+    return (n >= 1 && n <= 90) ? n : null;
+  } catch { return null; }
+}
+
+// Scan one card canvas → grid
+async function scanCardWithTesseract(worker, cardCanvas) {
+  const W = cardCanvas.width, H = cardCanvas.height;
+  // Margins: small inset to avoid borders
+  const mx = Math.round(W * 0.03), my = Math.round(H * 0.04);
+  const cellW = Math.round((W - mx*2) / 9);
+  const cellH = Math.round((H - my*2) / 3);
+
+  const grid = [Array(9).fill(null), Array(9).fill(null), Array(9).fill(null)];
+
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 9; c++) {
+      const x = mx + c * cellW;
+      const y = my + r * cellH;
+      const cell = document.createElement('canvas');
+      cell.width  = cellW;
+      cell.height = cellH;
+      cell.getContext('2d').drawImage(cardCanvas, x, y, cellW, cellH, 0, 0, cellW, cellH);
+      const n = await readCell(worker, cell);
+      if (n !== null) {
+        const correctCol = n <= 9 ? 0 : n >= 80 ? 8 : Math.floor(n / 10);
+        // Place in correct column if empty
+        if (grid[r][correctCol] === null) grid[r][correctCol] = n;
+      }
+    }
+  }
+  return validateGrid(grid);
+}
+
+function ScannerModal({onSaveCards, onCancel, lm}) {
+  const PLATE_SIZES = [1, 6, 12, 18, 24, 36];
+  const [imgCanvas,  setImgCanvas]  = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [ps,         setPs]         = useState(1);
+  const [plateColor, setPlateColor] = useState(CARD_COLORS[0]);
+  const [cards,      setCards]      = useState([]);
+  const [scanning,   setScanning]   = useState(false);
+  const [progress,   setProgress]   = useState({step:0, total:0, label:''});
+  const [done,       setDone]       = useState(false);
+  const [error,      setError]      = useState(null);
+  const [ai,         setAi]         = useState(0);
+  const [ec,         setEc]         = useState(null);
+  const [ev,         setEv]         = useState('');
+  const [multiImgs,  setMultiImgs]  = useState([]); // for 18/36: multiple plates
+  const fRef = useRef(), cRef = useRef();
+
+  // Normalize image → portrait canvas
+  const normalizeImage = (arrayBuf) => new Promise(resolve => {
+    let orientation = 1;
+    try {
+      const view = new DataView(arrayBuf);
+      if (view.getUint16(0,false) === 0xFFD8) {
+        let off = 2;
+        while (off < view.byteLength) {
+          if (view.getUint16(off,false) === 0xFFE1) {
+            if (view.getUint32(off+4,false) === 0x45786966) {
+              const little = view.getUint16(off+10,false) === 0x4949;
+              const tags = view.getUint16(off+14,little);
+              for (let i=0;i<tags;i++) {
+                if (view.getUint16(off+16+i*12,little) === 0x0112) {
+                  orientation = view.getUint16(off+16+i*12+8,little); break;
                 }
               }
-              break;
             }
-            off += 2+view.getUint16(off+2,false);
+            break;
           }
+          off += 2+view.getUint16(off+2,false);
         }
-      } catch(_) {}
+      }
+    } catch(_) {}
 
-      const blob = new Blob([arrayBuf]);
-      const url  = URL.createObjectURL(blob);
-      const img  = new Image();
-      img.onload = () => {
-        const MAX = 3000; // haute résolution pour le découpage
-        const rotate = (orientation >= 5 && orientation <= 8);
-        let w = rotate ? img.height : img.width;
-        let h = rotate ? img.width  : img.height;
-        const scale = Math.min(1, MAX / Math.max(w, h));
-        const cw = Math.round(w*scale), ch = Math.round(h*scale);
-
-        const cv  = document.createElement('canvas');
-        cv.width  = cw; cv.height = ch;
-        const ctx = cv.getContext('2d');
-        ctx.save();
-        if (orientation===2) ctx.transform(-1,0,0,1,cw,0);
-        else if (orientation===3) ctx.transform(-1,0,0,-1,cw,ch);
-        else if (orientation===4) ctx.transform(1,0,0,-1,0,ch);
-        else if (orientation===5) ctx.transform(0,1,1,0,0,0);
-        else if (orientation===6) ctx.transform(0,1,-1,0,ch,0);
-        else if (orientation===7) ctx.transform(0,-1,-1,0,ch,cw);
-        else if (orientation===8) ctx.transform(0,-1,1,0,0,cw);
-        ctx.drawImage(img, 0, 0, cw, ch);
-        ctx.restore();
-
-        // If still landscape, rotate 90° CCW
-        const finalW = cv.width, finalH = cv.height;
-        if (finalW > finalH) {
-          const rv  = document.createElement('canvas');
-          rv.width  = finalH; rv.height = finalW;
-          const rc  = rv.getContext('2d');
-          rc.translate(0, finalW);
-          rc.rotate(-Math.PI/2);
-          rc.drawImage(cv, 0, 0);
-          setImgEl(rv); // store normalized canvas
-        } else {
-          setImgEl(cv);
-        }
-        URL.revokeObjectURL(url);
-      };
-      img.src = url;
+    const blob = new Blob([arrayBuf]);
+    const url  = URL.createObjectURL(blob);
+    const img  = new Image();
+    img.onload = () => {
+      const rot = (orientation >= 5 && orientation <= 8);
+      let w = rot ? img.height : img.width;
+      let h = rot ? img.width  : img.height;
+      const MAX = 3000;
+      const scale = Math.min(1, MAX / Math.max(w, h));
+      const cw = Math.round(w*scale), ch = Math.round(h*scale);
+      const cv = document.createElement('canvas');
+      cv.width = cw; cv.height = ch;
+      const ctx = cv.getContext('2d');
+      ctx.save();
+      if (orientation===6) ctx.transform(0,1,-1,0,ch,0);
+      else if (orientation===8) ctx.transform(0,-1,1,0,0,cw);
+      else if (orientation===3) ctx.transform(-1,0,0,-1,cw,ch);
+      ctx.drawImage(img,0,0,cw,ch);
+      ctx.restore();
+      // Force portrait
+      const final = (cv.width > cv.height) ? (() => {
+        const rv = document.createElement('canvas');
+        rv.width = ch; rv.height = cw;
+        rv.getContext('2d').transform ? (()=>{ const rc = rv.getContext('2d'); rc.translate(0,cw); rc.rotate(-Math.PI/2); rc.drawImage(cv,0,0); })() : null;
+        return rv;
+      })() : cv;
+      URL.revokeObjectURL(url);
+      resolve(final);
     };
-    reader.readAsArrayBuffer(f);
+    img.src = url;
+  });
+
+  const loadFile = async (f, addToMulti=false) => {
+    if (!f) return;
+    setError(null);
+    const arrayBuf = await new Promise(r=>{ const fr=new FileReader(); fr.onload=e=>r(e.target.result); fr.readAsArrayBuffer(f); });
+    const canvas = await normalizeImage(arrayBuf);
+    const url = canvas.toDataURL('image/jpeg', 0.8);
+    if (addToMulti) {
+      setMultiImgs(prev => [...prev, {canvas, url}]);
+    } else {
+      setImgCanvas(canvas);
+      setPreviewUrl(url);
+      setMultiImgs([]);
+      setDone(false); setCards([]);
+    }
   };
 
-  // ── Découper la plaque en N cartons individuels (canvas) ──────
+  // Crop canvas into N individual card canvases (column-major order)
   const cropCards = (canvas, n) => {
-    const W = canvas.width, H = canvas.height;
-    const crops = [];
-
     if (n === 1) {
-      // Carton unique: toute l'image
       const cv = document.createElement('canvas');
-      cv.width = W; cv.height = H;
+      cv.width = canvas.width; cv.height = canvas.height;
       cv.getContext('2d').drawImage(canvas, 0, 0);
-      crops.push(cv);
-    } else {
-      // Plaques multi-cartons: grille cols×rows
-      // Standard: 2 colonnes, rows = n/2
-      const cols = 2;
-      const rows = Math.ceil(n / cols);
-      // Marges estimées: 2% de chaque côté
-      const marginX = Math.round(W * 0.01);
-      const marginY = Math.round(H * 0.01);
-      const cardW = Math.round((W - marginX*2) / cols);
-      const cardH = Math.round((H - marginY*2) / rows);
-
-      // Ordre: colonne par colonne (haut→bas col1, puis haut→bas col2)
-      for (let col=0; col<cols; col++) {
-        for (let row=0; row<rows; row++) {
-          const x = marginX + col * cardW;
-          const y = marginY + row * cardH;
-          const cv = document.createElement('canvas');
-          cv.width  = cardW;
-          cv.height = cardH;
-          cv.getContext('2d').drawImage(canvas, x, y, cardW, cardH, 0, 0, cardW, cardH);
-          crops.push(cv);
-        }
+      return [cv];
+    }
+    const cols = 2, rows = Math.ceil(n / cols);
+    const W = canvas.width, H = canvas.height;
+    const mx = Math.round(W * 0.008), my = Math.round(H * 0.008);
+    const cardW = Math.round((W - mx*2) / cols);
+    const cardH = Math.round((H - my*2) / rows);
+    const crops = [];
+    // Column-major: col0 top→bottom, then col1 top→bottom
+    for (let col=0; col<cols; col++) {
+      for (let row=0; row<rows; row++) {
+        const cv = document.createElement('canvas');
+        cv.width = cardW; cv.height = cardH;
+        cv.getContext('2d').drawImage(canvas, mx+col*cardW, my+row*cardH, cardW, cardH, 0, 0, cardW, cardH);
+        crops.push(cv);
       }
     }
     return crops.slice(0, n);
   };
 
-  // ── Analyser 1 carton (1 requête) ─────────────────────────────
-  const scanOne = async (cardCanvas, idx) => {
-    const b64 = cardCanvas.toDataURL('image/jpeg', 0.92).split(',')[1];
-    const res  = await fetch('/api/claude', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-5',
-        max_tokens: 1024,
-        messages: [{role:'user', content:[
-          {type:'image', source:{type:'base64', media_type:'image/jpeg', data:b64}},
-          {type:'text',  text:
-`Tu lis un carton de loto quine français (1 seul carton, 3 lignes × 9 colonnes).
-RÈGLES:
-• Chaque ligne: EXACTEMENT 5 numéros + 4 cases vides (null)
-• col0=1-9, col1=10-19, col2=20-29, col3=30-39, col4=40-49, col5=50-59, col6=60-69, col7=70-79, col8=80-90
-• Un numéro appartient toujours à sa colonne de dizaine
-
-EXEMPLE CORRECT:
-{"grid":[[null,null,27,39,null,55,62,null,90],[3,11,null,31,43,null,null,71,null],[2,16,29,null,null,59,61,null,null]]}
-
-Réponds UNIQUEMENT avec le JSON brut (pas de texte avant/après):
-{"grid":[[...],[...],[...]]}`
-          }
-        ]}]
-      })
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message||'Erreur API');
-    const raw  = (data.content?.find(b=>b.type==='text')?.text)||'';
-    const parsed = extractJSON(raw);
-    const rawGrid = (parsed.grid||[]).map(row=>
-      Array.isArray(row) ? row.map(v=>v==null?null:Number(v)) : Array(9).fill(null)
-    );
-    return validateGrid(rawGrid);
-  };
-
-  // ── Lancer le scan de tous les cartons ────────────────────────
   const scan = async () => {
-    if (!imgEl) return;
-    setScanning(true); setError(null); setProgress(0); setCards([]);
-    const crops  = cropCards(imgEl, ps);
-    const results = [];
-    for (let i=0; i<crops.length; i++) {
-      try {
-        const grid = await scanOne(crops[i], i);
-        results.push({id:i, validated:false, label:'', grid});
-      } catch(e) {
-        results.push({id:i, validated:false, label:'', grid:emptyGrid(), scanError:e.message});
+    const sources = multiImgs.length > 0 ? multiImgs : (imgCanvas ? [{canvas:imgCanvas}] : []);
+    if (!sources.length) return;
+    setScanning(true); setError(null); setProgress({step:0,total:0,label:'Chargement OCR…'});
+    setCards([]);
+
+    try {
+      // Load Tesseract
+      const worker = await getTessWorker();
+      const allCrops = [];
+      for (const src of sources) {
+        const cardsPerPlate = multiImgs.length > 0 ? Math.round(ps / sources.length) : ps;
+        cropCards(src.canvas, cardsPerPlate).forEach(c => allCrops.push(c));
       }
-      setProgress(Math.round(((i+1)/crops.length)*100));
-      setCards([...results]);
+      const total = Math.min(allCrops.length, ps);
+      const results = [];
+      for (let i=0; i<total; i++) {
+        setProgress({step:i+1, total, label:`Carton ${i+1}/${total}`});
+        try {
+          const grid = await scanCardWithTesseract(worker, allCrops[i]);
+          results.push({id:i, validated:false, label:'', grid, scanError:null});
+        } catch(e) {
+          results.push({id:i, validated:false, label:'', grid:emptyGrid(), scanError:e.message});
+        }
+        setCards([...results]);
+      }
+      setDone(true); setAi(0);
+    } catch(e) {
+      setError(e.message);
+    } finally {
+      setScanning(false);
+      setProgress({step:0,total:0,label:''});
     }
-    setScanning(false); setDone(true); setAi(0);
   };
 
-  // ── Valider / éditer ──────────────────────────────────────────
   const commitEdit = () => {
     if (!ec) return;
     const [cid,r,c] = ec;
@@ -1014,230 +1095,248 @@ Réponds UNIQUEMENT avec le JSON brut (pas de texte avant/après):
   const ac  = cards[ai];
   const bg  = lm?'#fff':'#1a1548';
   const brd = lm?'#e5e7eb':'rgba(245,197,24,.2)';
+  const needMulti = ps >= 18;
 
-  return (
+  return React.createElement('div', {
+    style:{position:'fixed',inset:0,background:'rgba(0,0,0,.8)',zIndex:200,
+      display:'flex',alignItems:'flex-end',justifyContent:'center',backdropFilter:'blur(6px)'},
+    onClick:onCancel},
     React.createElement('div', {
-      style:{position:'fixed',inset:0,background:'rgba(0,0,0,.8)',zIndex:200,
-        display:'flex',alignItems:'flex-end',justifyContent:'center',backdropFilter:'blur(6px)'},
-      onClick:onCancel},
-      React.createElement('div', {
-        style:{background:bg,border:`2px solid ${brd}`,borderRadius:'22px 22px 0 0',
-          padding:`12px 16px max(28px,env(safe-area-inset-bottom))`,
-          width:'100%',maxWidth:600,maxHeight:'96dvh',overflowY:'auto'},
-        onClick:e=>e.stopPropagation()},
+      style:{background:bg,border:`2px solid ${brd}`,borderRadius:'22px 22px 0 0',
+        padding:`12px 16px max(28px,env(safe-area-inset-bottom))`,
+        width:'100%',maxWidth:600,maxHeight:'96dvh',overflowY:'auto'},
+      onClick:e=>e.stopPropagation()},
 
-        React.createElement('div', {style:{width:44,height:5,borderRadius:99,
-          background:lm?'#e5e7eb':'rgba(255,255,255,.15)',margin:'0 auto 14px'}}),
-        React.createElement('div', {style:{fontFamily:"'Fredoka One',cursive",fontSize:17,
-          color:lm?'#1e293b':'#f5c518',marginBottom:14}}, '📸 Scanner une plaque'),
+      React.createElement('div', {style:{width:44,height:5,borderRadius:99,
+        background:lm?'#e5e7eb':'rgba(255,255,255,.15)',margin:'0 auto 14px'}}),
+      React.createElement('div', {style:{fontFamily:"'Fredoka One',cursive",fontSize:17,
+        color:lm?'#1e293b':'#f5c518',marginBottom:14}}, '📸 Scanner une plaque'),
 
-        /* Sélecteur nombre de cartons */
-        React.createElement('div', {style:{display:'flex',gap:6,marginBottom:12}},
-          [1,6,12,24].map(s=>
-            React.createElement('button', {key:s, onClick:()=>{setPs(s);setDone(false);setCards([]);},
-              style:{flex:1,padding:'9px',borderRadius:8,cursor:'pointer',
-                fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:12,
+      // Nombre de cartons
+      React.createElement('div', {style:{marginBottom:10}},
+        React.createElement('div', {style:{fontSize:9,fontWeight:700,letterSpacing:1.5,
+          textTransform:'uppercase',color:lm?'#9ca3af':'rgba(255,255,255,.4)',marginBottom:5}},
+          'Nombre de cartons sur la plaque'),
+        React.createElement('div', {style:{display:'flex',gap:5,flexWrap:'wrap'}},
+          PLATE_SIZES.map(s=>
+            React.createElement('button', {key:s, onClick:()=>{setPs(s);setDone(false);setCards([]);setMultiImgs([]);},
+              style:{padding:'8px 12px',borderRadius:8,cursor:'pointer',
+                fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:13,
                 border:`2px solid ${ps===s?(lm?'#2563eb':'#f5c518'):(lm?'#e5e7eb':'rgba(255,255,255,.1)')}`,
                 background:ps===s?(lm?'#eff6ff':'rgba(245,197,24,.08)'):(lm?'#f9fafb':'rgba(255,255,255,.03)'),
                 color:ps===s?(lm?'#2563eb':'#f5c518'):(lm?'#6b7280':'rgba(255,255,255,.4)'),
                 WebkitTapHighlightColor:'transparent'}},
-              `${s} c.`
+              `${s} carton${s>1?'s':''}`
             )
           )
-        ),
+        )
+      ),
 
-        /* Zone image */
-        !image
+      // Couleur de la plaque
+      React.createElement('div', {style:{marginBottom:10}},
+        React.createElement('div', {style:{fontSize:9,fontWeight:700,letterSpacing:1.5,
+          textTransform:'uppercase',color:lm?'#9ca3af':'rgba(255,255,255,.4)',marginBottom:5}},
+          'Couleur des cartons'),
+        React.createElement('div', {style:{display:'flex',gap:7,flexWrap:'wrap',alignItems:'center'}},
+          CARD_COLORS.map(c=>
+            React.createElement('button', {key:c, onClick:()=>setPlateColor(c),
+              style:{width:28,height:28,borderRadius:'50%',background:c,cursor:'pointer',
+                border:`3px solid ${plateColor===c?'#fff':'transparent'}`,
+                boxShadow:plateColor===c?`0 0 0 2px ${c}`:'none',
+                transform:plateColor===c?'scale(1.2)':'scale(1)',transition:'all .15s',
+                WebkitTapHighlightColor:'transparent'}})
+          ),
+          React.createElement('input', {type:'color',value:plateColor,
+            onChange:e=>setPlateColor(e.target.value),
+            style:{width:28,height:28,borderRadius:'50%',border:`2px solid ${lm?'#e5e7eb':'rgba(255,255,255,.2)'}`,padding:0,cursor:'pointer'}})
+        )
+      ),
+
+      // Zone(s) image
+      needMulti
+        ? React.createElement('div', {style:{marginBottom:10}},
+            React.createElement('div', {style:{fontSize:10,color:lm?'#6b7280':'rgba(255,255,255,.5)',marginBottom:6,fontWeight:600}},
+              `${ps} cartons = plusieurs photos. Importez-les une par une (${Math.ceil(ps/12)} photos de 12 conseillé).`),
+            React.createElement('div', {style:{display:'flex',gap:6,flexWrap:'wrap',marginBottom:6}},
+              multiImgs.map((m,i)=>
+                React.createElement('img', {key:i, src:m.url, alt:'',
+                  style:{width:80,height:60,objectFit:'cover',borderRadius:6,
+                    border:`2px solid ${lm?'#e5e7eb':'rgba(255,255,255,.2)'}` }})
+              ),
+              React.createElement('button', {
+                onClick:()=>fRef.current.click(),
+                style:{width:80,height:60,borderRadius:6,cursor:'pointer',fontSize:20,
+                  border:`2px dashed ${lm?'#d1d5db':'rgba(255,255,255,.2)'}`,
+                  background:lm?'#f9fafb':'rgba(255,255,255,.04)',
+                  color:lm?'#9ca3af':'rgba(255,255,255,.4)'}}, '+')
+            )
+          )
+        : !previewUrl
           ? React.createElement('div', {
               style:{border:`2px dashed ${lm?'#d1d5db':'rgba(255,255,255,.15)'}`,borderRadius:10,
-                padding:'22px',textAlign:'center',cursor:'pointer',
+                padding:'20px',textAlign:'center',cursor:'pointer',
                 background:lm?'#f9fafb':'rgba(255,255,255,.02)',marginBottom:10},
               onClick:()=>fRef.current.click()},
               React.createElement('div', {style:{fontSize:32}}, '🎴'),
-              React.createElement('div', {style:{fontSize:13,color:lm?'#6b7280':'rgba(255,255,255,.35)',marginTop:6,fontWeight:600}},
-                'Importer une photo')
-            )
-          : React.createElement('img', {src:image, alt:'',
+              React.createElement('div', {style:{fontSize:13,color:lm?'#6b7280':'rgba(255,255,255,.35)',marginTop:6}}, 'Importer une photo'))
+          : React.createElement('img', {src:previewUrl, alt:'',
               style:{width:'100%',maxHeight:160,objectFit:'contain',borderRadius:8,
-                border:`1px solid ${lm?'#e5e7eb':'rgba(255,255,255,.1)'}`,marginBottom:10,
-                background:lm?'#f9fafb':'rgba(0,0,0,.2)'}}),
+                border:`1px solid ${lm?'#e5e7eb':'rgba(255,255,255,.1)'}`,marginBottom:10}}),
 
-        /* Inputs fichier cachés */
-        React.createElement('input', {ref:fRef, type:'file', accept:'image/*',
-          onChange:e=>loadFile(e.target.files[0]), style:{display:'none'}}),
-        React.createElement('input', {ref:cRef, type:'file', accept:'image/*', capture:'environment',
-          onChange:e=>loadFile(e.target.files[0]), style:{display:'none'}}),
+      // Inputs cachés
+      React.createElement('input', {ref:fRef, type:'file', accept:'image/*',
+        onChange:e=>loadFile(e.target.files[0], needMulti), style:{display:'none'}}),
+      React.createElement('input', {ref:cRef, type:'file', accept:'image/*', capture:'environment',
+        onChange:e=>loadFile(e.target.files[0], needMulti), style:{display:'none'}}),
 
-        /* Boutons action */
-        React.createElement('div', {style:{display:'flex',gap:7,marginBottom:10}},
-          React.createElement('button', {
-            style:{...ghostBs(lm),flex:1,padding:'9px',fontSize:12},
-            onClick:()=>cRef.current.click()}, '📸 Caméra'),
-          React.createElement('button', {
-            style:{...ghostBs(lm),flex:1,padding:'9px',fontSize:12},
-            onClick:()=>fRef.current.click()}, '🖼️ Galerie'),
-          image&&!scanning&&imgEl
-            ? React.createElement('button', {
-                style:{...primaryBs,flex:2,padding:'9px',fontSize:12},
-                onClick:scan}, '✨ Analyser')
-            : image&&!imgEl
-              ? React.createElement('button', {
-                  style:{...ghostBs(lm),flex:2,padding:'9px',fontSize:12,opacity:.6},
-                  disabled:true}, '⏳ Chargement…')
-              : scanning
-                ? React.createElement('button', {
-                    style:{...primaryBs,flex:2,padding:'9px',fontSize:12,opacity:.7},
-                    disabled:true}, `⏳ ${progress}%`)
-                : null
-        ),
+      // Boutons action
+      React.createElement('div', {style:{display:'flex',gap:7,marginBottom:10}},
+        React.createElement('button', {style:{...ghostBs(lm),flex:1,padding:'9px',fontSize:12},
+          onClick:()=>cRef.current.click()}, '📸 Caméra'),
+        React.createElement('button', {style:{...ghostBs(lm),flex:1,padding:'9px',fontSize:12},
+          onClick:()=>fRef.current.click()}, '🖼️ Galerie'),
+        (imgCanvas||multiImgs.length>0)&&!scanning
+          ? React.createElement('button', {style:{...primaryBs,flex:2,padding:'9px',fontSize:12}, onClick:scan}, '✨ Analyser')
+          : scanning
+            ? React.createElement('button', {style:{...primaryBs,flex:2,padding:'9px',fontSize:12,opacity:.7}, disabled:true},
+                progress.total>0 ? `⏳ ${progress.step}/${progress.total}` : '⏳ Chargement…')
+            : null
+      ),
 
-        /* Popup analyse en cours */
-        scanning&&React.createElement('div', {
-          style:{position:'fixed',inset:0,zIndex:300,display:'flex',
-            alignItems:'center',justifyContent:'center',
-            background:'rgba(0,0,0,.65)',backdropFilter:'blur(4px)'}},
-          React.createElement('div', {
-            style:{background:lm?'#fff':'#1e1b4b',borderRadius:18,padding:'28px 32px',
-              textAlign:'center',boxShadow:'0 20px 60px rgba(0,0,0,.4)',minWidth:260,
-              border:`2px solid ${lm?'#e5e7eb':'rgba(245,197,24,.3)'}`}},
-            React.createElement('div', {style:{fontSize:40,marginBottom:10,
-              animation:'spin 1.2s linear infinite',display:'inline-block'}}, '🔍'),
-            React.createElement('div', {style:{fontFamily:"'Fredoka One',cursive",fontSize:18,
-              color:lm?'#1e293b':'#f5c518',marginBottom:6}},
-              `Carton ${Math.min(progress===100?cards.length:Math.ceil(progress/100*ps),ps)} / ${ps}`),
-            React.createElement('div', {style:{marginBottom:12}},
-              React.createElement('div', {style:{width:200,height:6,background:lm?'#e5e7eb':'rgba(255,255,255,.15)',
-                borderRadius:99,overflow:'hidden',margin:'0 auto'}},
-                React.createElement('div', {style:{height:6,width:`${progress}%`,
-                  background:'linear-gradient(90deg,#f5c518,#ff4fa3)',
-                  borderRadius:99,transition:'width .3s'}})
-              )
+      // Popup scan en cours
+      scanning&&React.createElement('div', {
+        style:{position:'fixed',inset:0,zIndex:300,display:'flex',
+          alignItems:'center',justifyContent:'center',
+          background:'rgba(0,0,0,.65)',backdropFilter:'blur(4px)'}},
+        React.createElement('div', {
+          style:{background:lm?'#fff':'#1e1b4b',borderRadius:18,padding:'28px 32px',
+            textAlign:'center',minWidth:270,
+            border:`2px solid ${lm?'#e5e7eb':'rgba(245,197,24,.3)'}`}},
+          React.createElement('div', {style:{fontSize:36,marginBottom:10,
+            animation:'spin 1.2s linear infinite',display:'inline-block'}}, '🔍'),
+          React.createElement('div', {style:{fontFamily:"'Fredoka One',cursive",fontSize:18,
+            color:lm?'#1e293b':'#f5c518',marginBottom:8}}, progress.label||'Préparation…'),
+          progress.total>0&&React.createElement('div', null,
+            React.createElement('div', {style:{width:220,height:8,background:lm?'#e5e7eb':'rgba(255,255,255,.15)',
+              borderRadius:99,overflow:'hidden',margin:'0 auto 8px'}},
+              React.createElement('div', {style:{height:8,borderRadius:99,
+                width:`${Math.round(progress.step/progress.total*100)}%`,
+                background:'linear-gradient(90deg,#f5c518,#ff4fa3)',transition:'width .3s'}})
             ),
             React.createElement('div', {style:{fontSize:12,color:lm?'#6b7280':'rgba(255,255,255,.5)'}},
-              'Analyse carton par carton…')
+              `${progress.step} / ${progress.total} cartons`)
           )
-        ),
-
-        /* Erreur globale */
-        !scanning&&error&&React.createElement('div', {
-          style:{background:lm?'#fef2f2':'rgba(255,79,163,.07)',
-            border:`1px solid ${lm?'#fca5a5':'rgba(255,79,163,.3)'}`,
-            borderRadius:8,padding:'8px 10px',color:lm?'#dc2626':'#ff4fa3',
-            fontSize:11,marginBottom:10,lineHeight:1.5}},
-          '⚠️ ', error),
-
-        /* Validation carton par carton */
-        !scanning&&done&&ac&&React.createElement(React.Fragment, null,
-
-          /* Onglets cartons */
-          cards.length>1&&React.createElement('div', {style:{display:'flex',gap:5,flexWrap:'wrap',marginBottom:10}},
-            cards.map((c,i)=>
-              React.createElement('button', {key:i, onClick:()=>setAi(i),
-                style:{padding:'4px 10px',borderRadius:6,fontSize:11,fontWeight:700,cursor:'pointer',
-                  border:`1.5px solid ${ai===i?(lm?'#2563eb':'#f5c518'):c.validated?(lm?'#16a34a':'#00e676'):c.scanError?(lm?'#f59e0b':'#fbbf24'):(lm?'#e5e7eb':'rgba(255,255,255,.1)')}`,
-                  background:ai===i?(lm?'#eff6ff':'rgba(245,197,24,.08)'):c.validated?(lm?'#dcfce7':'rgba(0,230,118,.08)'):c.scanError?(lm?'#fef9c3':'rgba(245,197,24,.07)'):(lm?'#f9fafb':'rgba(255,255,255,.02)'),
-                  color:ai===i?(lm?'#2563eb':'#f5c518'):c.validated?(lm?'#16a34a':'#00e676'):c.scanError?(lm?'#d97706':'#fbbf24'):(lm?'#6b7280':'rgba(255,255,255,.4)'),
-                  WebkitTapHighlightColor:'transparent'}},
-                `C${i+1}`, c.validated?' ✓':c.scanError?' ⚠':''
-              )
-            )
-          ),
-
-          /* Erreur de ce carton */
-          ac.scanError&&React.createElement('div', {
-            style:{background:lm?'#fef9c3':'rgba(245,197,24,.1)',
-              border:`1px solid ${lm?'#fcd34d':'rgba(245,197,24,.3)'}`,
-              borderRadius:8,padding:'7px 10px',fontSize:11,
-              color:lm?'#92400e':'#fbbf24',marginBottom:8}},
-            '⚠️ Erreur sur ce carton — vérifiez et corrigez manuellement.'),
-
-          /* Champ nom */
-          React.createElement('div', {style:{marginBottom:10}},
-            React.createElement('div', {style:{fontSize:9,color:lm?'#9ca3af':'rgba(255,255,255,.35)',
-              fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:4}}, 'Nom du carton'),
-            React.createElement('input', {type:'text',placeholder:`Carton ${ai+1}`,value:ac.label,
-              onChange:e=>setCards(prev=>prev.map((c,i)=>i===ai?{...c,label:e.target.value}:c)),
-              maxLength:20,
-              style:{display:'block',width:'100%',
-                background:lm?'#f9fafb':'rgba(255,255,255,.06)',
-                border:`2px solid ${lm?'#e5e7eb':'rgba(255,255,255,.15)'}`,
-                borderRadius:9,color:lm?'#1e293b':'#fff',
-                fontFamily:"'Nunito',sans-serif",fontSize:15,fontWeight:700,
-                padding:'9px 12px',outline:'none'}})
-          ),
-
-          /* Grille éditable */
-          React.createElement('div', {style:{overflowX:'auto',marginBottom:8}},
-            React.createElement('table', {style:{width:'100%',borderCollapse:'collapse',minWidth:320}},
-              React.createElement('thead',null,
-                React.createElement('tr',null,
-                  React.createElement('th',{style:{width:'5%',background:lm?'#f9fafb':'rgba(0,0,0,.2)',fontSize:7,color:lm?'#9ca3af':'rgba(255,255,255,.3)',padding:'2px'}}),
-                  COL_LABELS.map((l,i)=>React.createElement('th',{key:i,
-                    style:{fontSize:6,color:lm?'#6b7280':'rgba(255,255,255,.4)',padding:'2px 1px',
-                      textAlign:'center',background:lm?'#f9fafb':'rgba(0,0,0,.2)',fontWeight:800}},l))
-                )
-              ),
-              React.createElement('tbody',null,
-                ac.grid.map((row,r)=>
-                  React.createElement('tr',{key:r},
-                    React.createElement('td',{style:{background:lm?'#f9fafb':'rgba(0,0,0,.2)',
-                      fontSize:8,textAlign:'center',color:lm?'#9ca3af':'rgba(255,255,255,.3)',fontWeight:800}},`L${r+1}`),
-                    row.map((cell,c)=>{
-                      const isE = ec&&ec[0]===ac.id&&ec[1]===r&&ec[2]===c;
-                      return React.createElement('td',{key:c,
-                        style:{border:`1px solid ${lm?'#e5e7eb':'rgba(255,255,255,.1)'}`,
-                          textAlign:'center',
-                          background:cell===null?(lm?'#f0f9ff':'rgba(255,255,255,.02)'):(lm?'#fff':'rgba(255,255,255,.07)'),
-                          cursor:'pointer',minWidth:32,height:32},
-                        onClick:()=>{setEc([ac.id,r,c]);setEv(cell!==null?String(cell):'');}},
-                        isE
-                          ? React.createElement('input',{autoFocus:true,
-                              style:{width:'100%',border:'none',background:'transparent',textAlign:'center',
-                                fontSize:12,fontWeight:800,padding:'3px 0',outline:'none',
-                                color:lm?'#1e293b':'#fff'},
-                              value:ev,onChange:e=>setEv(e.target.value),
-                              onKeyDown:e=>{if(e.key==='Enter'||e.key==='Tab'){e.preventDefault();commitEdit();}if(e.key==='Escape')setEc(null);},
-                              onBlur:commitEdit})
-                          : React.createElement('span',{
-                              style:{display:'inline-flex',alignItems:'center',justifyContent:'center',
-                                width:24,height:24,borderRadius:'50%',fontSize:10,fontWeight:800,
-                                color:cell!==null?(lm?'#1e293b':'rgba(255,255,255,.85)'):'transparent',
-                                border:cell!==null?`1px solid ${lm?'#e5e7eb':'rgba(255,255,255,.15)'}`:'none'}},
-                              cell!==null?cell:'')
-                      );
-                    })
-                  )
-                )
-              )
-            )
-          ),
-
-          /* Compteur + Valider */
-          React.createElement('div', {style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}},
-            React.createElement('span', {style:{fontSize:11,color:lm?'#6b7280':'rgba(255,255,255,.4)',fontWeight:600}},
-              ac.grid.flat().filter(v=>v!==null).length, '/15'),
-            React.createElement('button', {
-              onClick:()=>{
-                setCards(prev=>prev.map((c,i)=>i===ai?{...c,validated:!ac.validated}:c));
-                if(!ac.validated && ai<cards.length-1) setTimeout(()=>setAi(i=>i+1),300);
-              },
-              style:{padding:'8px 18px',borderRadius:8,fontWeight:700,fontSize:13,cursor:'pointer',
-                border:`1.5px solid ${ac.validated?(lm?'#16a34a':'#00e676'):(lm?'#f59e0b':'#f5c518')}`,
-                background:ac.validated?(lm?'#dcfce7':'rgba(0,230,118,.08)'):(lm?'#fffbeb':'rgba(245,197,24,.08)'),
-                color:ac.validated?(lm?'#16a34a':'#00e676'):(lm?'#d97706':'#f5c518'),
-                WebkitTapHighlightColor:'transparent'}},
-              ac.validated?'✅ Validé':'✓ Valider')
-          )
-        ),
-
-        /* Boutons bas */
-        React.createElement('div', {style:{display:'flex',gap:8}},
-          React.createElement('button', {style:ghostBs(lm), onClick:onCancel}, 'Annuler'),
-          done&&cards.length>0&&cards.every(c=>c.validated)&&
-            React.createElement('button', {style:primaryBs,
-              onClick:()=>onSaveCards(cards)},
-              `✅ Importer ${cards.length} carton${cards.length>1?'s':''}`)
         )
+      ),
+
+      // Erreur
+      !scanning&&error&&React.createElement('div', {
+        style:{background:lm?'#fef2f2':'rgba(255,79,163,.07)',
+          border:`1px solid ${lm?'#fca5a5':'rgba(255,79,163,.3)'}`,
+          borderRadius:8,padding:'8px 10px',color:lm?'#dc2626':'#ff4fa3',
+          fontSize:11,marginBottom:10}},
+        '⚠️ ', error),
+
+      // Validation
+      !scanning&&done&&ac&&React.createElement(React.Fragment, null,
+        // Onglets
+        cards.length>1&&React.createElement('div', {style:{display:'flex',gap:4,flexWrap:'wrap',marginBottom:10}},
+          cards.map((c,i)=>
+            React.createElement('button', {key:i, onClick:()=>setAi(i),
+              style:{padding:'4px 8px',borderRadius:6,fontSize:11,fontWeight:700,cursor:'pointer',
+                border:`1.5px solid ${ai===i?(lm?'#2563eb':'#f5c518'):c.validated?(lm?'#16a34a':'#00e676'):(lm?'#e5e7eb':'rgba(255,255,255,.1)')}`,
+                background:ai===i?(lm?'#eff6ff':'rgba(245,197,24,.08)'):c.validated?(lm?'#dcfce7':'rgba(0,230,118,.08)'):(lm?'#f9fafb':'rgba(255,255,255,.02)'),
+                color:ai===i?(lm?'#2563eb':'#f5c518'):c.validated?(lm?'#16a34a':'#00e676'):(lm?'#6b7280':'rgba(255,255,255,.4)'),
+                WebkitTapHighlightColor:'transparent'}},
+              `C${i+1}`, c.validated?' ✓':''
+            )
+          )
+        ),
+
+        // Nom
+        React.createElement('div', {style:{marginBottom:8}},
+          React.createElement('div', {style:{fontSize:9,fontWeight:700,letterSpacing:1.5,
+            textTransform:'uppercase',color:lm?'#9ca3af':'rgba(255,255,255,.35)',marginBottom:4}},
+            'Nom du carton'),
+          React.createElement('input', {type:'text', placeholder:`Carton ${ai+1}`, value:ac.label,
+            onChange:e=>setCards(prev=>prev.map((c,i)=>i===ai?{...c,label:e.target.value}:c)),
+            maxLength:20,
+            style:{display:'block',width:'100%',
+              background:lm?'#f9fafb':'rgba(255,255,255,.06)',
+              border:`2px solid ${lm?'#e5e7eb':'rgba(255,255,255,.15)'}`,
+              borderRadius:9,color:lm?'#1e293b':'#fff',
+              fontFamily:"'Nunito',sans-serif",fontSize:14,fontWeight:700,
+              padding:'8px 12px',outline:'none'}})
+        ),
+
+        // Grille éditable
+        React.createElement('div', {style:{overflowX:'auto',marginBottom:8}},
+          React.createElement('table', {style:{width:'100%',borderCollapse:'collapse',minWidth:300}},
+            React.createElement('thead',null,
+              React.createElement('tr',null,
+                React.createElement('th',{style:{width:'5%',background:lm?'#f9fafb':'rgba(0,0,0,.2)',
+                  fontSize:7,color:lm?'#9ca3af':'rgba(255,255,255,.3)',padding:'2px'}}),
+                COL_LABELS.map((l,i)=>React.createElement('th',{key:i,
+                  style:{fontSize:6,color:lm?'#6b7280':'rgba(255,255,255,.4)',padding:'2px 1px',
+                    textAlign:'center',background:lm?'#f9fafb':'rgba(0,0,0,.2)',fontWeight:800}},l))
+              )
+            ),
+            React.createElement('tbody',null,
+              ac.grid.map((row,r)=>
+                React.createElement('tr',{key:r},
+                  React.createElement('td',{style:{background:lm?'#f9fafb':'rgba(0,0,0,.2)',
+                    fontSize:8,textAlign:'center',color:lm?'#9ca3af':'rgba(255,255,255,.3)',fontWeight:800}},`L${r+1}`),
+                  row.map((cell,c)=>{
+                    const isE = ec&&ec[0]===ac.id&&ec[1]===r&&ec[2]===c;
+                    return React.createElement('td',{key:c,
+                      style:{border:`1px solid ${lm?'#e5e7eb':'rgba(255,255,255,.1)'}`,
+                        textAlign:'center',cursor:'pointer',
+                        background:cell===null?(lm?'#f0f9ff':'rgba(255,255,255,.02)'):(lm?'#fff':'rgba(255,255,255,.07)'),
+                        minWidth:28,height:28},
+                      onClick:()=>{setEc([ac.id,r,c]);setEv(cell!==null?String(cell):'');}},
+                      isE
+                        ? React.createElement('input',{autoFocus:true,
+                            style:{width:'100%',border:'none',background:'transparent',textAlign:'center',
+                              fontSize:11,fontWeight:800,padding:'2px 0',outline:'none',color:lm?'#1e293b':'#fff'},
+                            value:ev,onChange:e=>setEv(e.target.value),
+                            onKeyDown:e=>{if(e.key==='Enter'||e.key==='Tab'){e.preventDefault();commitEdit();}if(e.key==='Escape')setEc(null);},
+                            onBlur:commitEdit})
+                        : React.createElement('span',{style:{fontSize:10,fontWeight:800,
+                            color:cell!==null?(lm?'#1e293b':'rgba(255,255,255,.85)'):'transparent'}},
+                            cell!==null?cell:'')
+                    );
+                  })
+                )
+              )
+            )
+          )
+        ),
+
+        // Compteur + valider
+        React.createElement('div', {style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}},
+          React.createElement('span', {style:{fontSize:11,color:lm?'#6b7280':'rgba(255,255,255,.4)',fontWeight:600}},
+            `${ac.grid.flat().filter(v=>v!==null).length}/15 numéros`),
+          React.createElement('button', {
+            onClick:()=>{
+              setCards(prev=>prev.map((c,i)=>i===ai?{...c,validated:!ac.validated}:c));
+              if(!ac.validated && ai<cards.length-1) setTimeout(()=>setAi(i=>i+1),250);
+            },
+            style:{padding:'8px 16px',borderRadius:8,fontWeight:700,fontSize:13,cursor:'pointer',
+              border:`1.5px solid ${ac.validated?(lm?'#16a34a':'#00e676'):(lm?'#f59e0b':'#f5c518')}`,
+              background:ac.validated?(lm?'#dcfce7':'rgba(0,230,118,.08)'):(lm?'#fffbeb':'rgba(245,197,24,.08)'),
+              color:ac.validated?(lm?'#16a34a':'#00e676'):(lm?'#d97706':'#f5c518'),
+              WebkitTapHighlightColor:'transparent'}},
+            ac.validated?'✅ Validé':'✓ Valider')
+        )
+      ),
+
+      // Bas
+      React.createElement('div', {style:{display:'flex',gap:8}},
+        React.createElement('button', {style:ghostBs(lm), onClick:onCancel}, 'Annuler'),
+        done&&cards.length>0&&cards.every(c=>c.validated)&&
+          React.createElement('button', {style:primaryBs,
+            onClick:()=>onSaveCards(cards.map(c=>({...c,color:plateColor})))},
+            `✅ Importer ${cards.length} carton${cards.length>1?'s':''}`)
       )
     )
   );
@@ -1535,7 +1634,7 @@ function HistoryModal({drawn, onClose, lm}) {
 }
 
 // ─── NUMBER PAD ─────────────────────────────────────────────
-function NumberPad({ds, lm, navBg, navBrd, mode, setMode, onToggle, drawn, onAdd, onScan, onShowHistory, hasCards}) {
+function NumberPad({ds, lm, navBg, navBrd, mode, setMode, onToggle, drawn, onAdd, onScan, onShowHistory, hasCards, onUndo}) {
   const [buf, setBuf] = useState("");
   const [flash, setFlash] = useState(null);
   const [padMode, setPadMode] = useState("numpad"); // "numpad" | "grid" | "hidden"
@@ -1582,7 +1681,7 @@ function NumberPad({ds, lm, navBg, navBrd, mode, setMode, onToggle, drawn, onAdd
       padding:"8px 12px max(10px,env(safe-area-inset-bottom)) 12px",
       boxShadow:"0 -4px 20px rgba(0,0,0,.3)"},}
 
-      /* ── Row 1: cochés + last ball + display + col hint ── */
+      /* ── Row 1: cochés + last ball + display + col hint + undo ── */
       , React.createElement('div', { style: {display:"flex",gap:8,alignItems:"stretch",marginBottom:7},}
 
         /* Cochés badge — cliquable → historique */
@@ -1659,6 +1758,20 @@ function NumberPad({ds, lm, navBg, navBrd, mode, setMode, onToggle, drawn, onAdd
           )
         )
       )
+
+            /* Undo last number */
+      , drawn.length>0&&React.createElement('div', { style: {display:"flex",justifyContent:"flex-end",marginBottom:4},}
+          , React.createElement('button', { onClick: onUndo,
+              style: {display:"flex",alignItems:"center",gap:5,padding:"5px 10px",borderRadius:9,cursor:"pointer",
+                background:lm?"#fef2f2":"rgba(239,68,68,.08)",
+                border:`1.5px solid ${lm?"#fca5a5":"rgba(239,68,68,.3)"}`,
+                color:lm?"#dc2626":"#f87171",fontSize:12,fontWeight:700,
+                fontFamily:"'Nunito',sans-serif",
+                WebkitTapHighlightColor:"transparent"},}
+            , React.createElement('span', { style: {fontFamily:"'Fredoka One',cursive",fontSize:15}}, drawn[drawn.length-1])
+            , "↩ Annuler"
+          )
+        )
 
       /* ── Row 2: toggle Pavé / Grille ── */
       , padMode!=="hidden"&&React.createElement('div', { style: {display:"flex",gap:4,marginBottom:5},}
@@ -2014,7 +2127,8 @@ function App() {
                 onAdd: ()=>{setEditCard(null);setShowEditor(true);},
                 onScan: ()=>setShowScanner(true),
                 onShowHistory: ()=>setShowHistory(true),
-                hasCards: activeCards.length>0,})
+                hasCards: activeCards.length>0,
+                onUndo: ()=>upd(game.id,g=>({drawn:g.drawn.slice(0,-1)})),})
             )
           )
 

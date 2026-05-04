@@ -927,55 +927,89 @@ async function scanCardVision(cardCanvas) {
     const err = await res.json().catch(()=>({}));
     throw new Error(err.error || `HTTP ${res.status}`);
   }
-  const { words } = await res.json();
+  const { words, lines } = await res.json();
 
-  // Filter to numbers 1-90 only
-  const nums = words
-    .map(w => ({ n: parseInt(w.text.replace(/\D/g,''), 10), x: w.x, y: w.y, w: w.w, h: w.h }))
-    .filter(w => !isNaN(w.n) && w.n >= 1 && w.n <= 90);
+  // ── Strategy: use the `lines` array Google Vision returns natively.
+  // Each element of `lines` is a string of space-separated tokens Vision
+  // placed on the same visual line.  This is far more reliable than
+  // re-clustering words by Y-coordinate ourselves.
+  //
+  // Fallback: if the server didn't return `lines` (older backend), we
+  // rebuild them from the `words` array with Y-clustering (legacy path).
 
-  if (!nums.length) return emptyGrid();
+  let lineTokens = []; // array of arrays of valid loto numbers, one per Vision line
 
-  // Determine card dimensions from bounding box of all numbers
-  const minX = Math.min(...nums.map(w=>w.x));
-  const maxX = Math.max(...nums.map(w=>w.x+w.w));
-  const minY = Math.min(...nums.map(w=>w.y));
-  const maxY = Math.max(...nums.map(w=>w.y+w.h));
-  const totalW = maxX - minX;
-  const totalH = maxY - minY;
+  if (Array.isArray(lines) && lines.length > 0) {
+    // Primary path — use Vision's own line grouping
+    lineTokens = lines.map(lineText => {
+      const tokens = String(lineText).split(/\s+/);
+      return tokens
+        .map(t => parseInt(t.replace(/\D/g,''), 10))
+        .filter(n => !isNaN(n) && n >= 1 && n <= 90);
+    }).filter(row => row.length > 0);
+  } else if (Array.isArray(words) && words.length > 0) {
+    // Fallback path — Y-clustering on word bounding boxes
+    const nums = words
+      .map(w => ({
+        n: parseInt(w.text.replace(/\D/g,''), 10),
+        cy: w.y + w.h / 2,
+        h: w.h
+      }))
+      .filter(w => !isNaN(w.n) && w.n >= 1 && w.n <= 90);
 
-  // Assign each number to a row (0,1,2) based on Y position
-  // and to correct column based on its value
+    if (nums.length) {
+      const medH = [...nums].sort((a,b)=>a.h-b.h)[Math.floor(nums.length/2)].h || 20;
+      const tol  = medH * 0.7;
+      const sorted = [...nums].sort((a,b) => a.cy - b.cy);
+      const clusters = [];
+      for (const w of sorted) {
+        let placed = false;
+        for (const cl of clusters) {
+          const avgY = cl.reduce((s,c)=>s+c.cy,0)/cl.length;
+          if (Math.abs(w.cy - avgY) < tol) { cl.push(w); placed = true; break; }
+        }
+        if (!placed) clusters.push([w]);
+      }
+      // sort clusters top→bottom, keep the 3 largest
+      clusters.sort((a,b) => b.length - a.length);
+      const top3 = clusters.slice(0,3).sort((a,b) => {
+        const ay = a.reduce((s,c)=>s+c.cy,0)/a.length;
+        const by = b.reduce((s,c)=>s+c.cy,0)/b.length;
+        return ay - by;
+      });
+      lineTokens = top3.map(cl => cl.map(w => w.n));
+    }
+  }
+
+  if (!lineTokens.length) return emptyGrid();
+
+  // ── Filter: keep only lines that look like loto rows (2–5 numbers)
+  // and discard header/footer lines (e.g. a single number like a card ID).
+  const lotoLines = lineTokens.filter(row => row.length >= 2 && row.length <= 5);
+
+  // ── If we have more than 3 candidate lines, keep the 3 with the most numbers
+  const top3Lines = lotoLines.length > 3
+    ? [...lotoLines].sort((a,b) => b.length - a.length).slice(0,3)
+    : lotoLines;
+
+  // Re-sort by original order (index in lineTokens = top-to-bottom order)
+  top3Lines.sort((a,b) => lineTokens.indexOf(a) - lineTokens.indexOf(b));
+
+  // ── Fill the grid row by row
   const grid = [Array(9).fill(null), Array(9).fill(null), Array(9).fill(null)];
   const used = new Set();
 
-  // Sort by Y to determine row boundaries
-  const sortedY = [...nums].sort((a,b) => a.y - b.y);
-  // Find 3 row clusters using Y position thirds
-  const rowH = totalH / 3;
-
-  for (const w of nums) {
-    if (used.has(w.n)) continue;
-    // Determine row by Y position relative to card
-    const relY = w.y - minY;
-    const row = Math.min(2, Math.floor(relY / rowH));
-    // Correct column by number value
-    const col = w.n <= 9 ? 0 : w.n >= 80 ? 8 : Math.floor(w.n / 10);
-    // Place if slot is free
-    if (grid[row][col] === null) {
-      grid[row][col] = w.n;
-      used.add(w.n);
-    } else {
-      // Try adjacent rows
-      for (let r2=0; r2<3; r2++) {
-        if (r2 !== row && grid[r2][col] === null) {
-          grid[r2][col] = w.n;
-          used.add(w.n);
-          break;
-        }
+  top3Lines.forEach((row, rowIdx) => {
+    if (rowIdx > 2) return;
+    for (const n of row) {
+      if (used.has(n)) continue;
+      const col = n <= 9 ? 0 : n >= 80 ? 8 : Math.floor(n / 10);
+      if (grid[rowIdx][col] === null) {
+        grid[rowIdx][col] = n;
+        used.add(n);
       }
     }
-  }
+  });
 
   return validateGrid(grid);
 }

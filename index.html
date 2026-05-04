@@ -824,132 +824,12 @@ function CardEditor({card, defaultColor, onSave, onCancel, onDelete, onPlay, lm}
 // ─── SCANNER MODAL ───────────────────────────────────────────────
 
 
-// ─── TESSERACT SCANNER ───────────────────────────────────────────
-// Loads Tesseract.js once, caches worker globally
-let _tessWorker = null;
-let _tessReady  = false;
-let _tessLoading = false;
-const _tessQueue = [];
+// ─── GOOGLE VISION SCANNER ─────────────────────────────────────
+// ─── GOOGLE VISION SCANNER ──────────────────────────────────────
 
-async function getTessWorker(onProgress) {
-  if (_tessReady) return _tessWorker;
-  return new Promise((resolve, reject) => {
-    _tessQueue.push({resolve, reject});
-    if (_tessLoading) return;
-    _tessLoading = true;
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
-    script.onload = async () => {
-      try {
-        const worker = await Tesseract.createWorker('fra', 1, {
-          workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
-          corePath:   'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core.wasm.js',
-          logger: m => { if (m.status === 'recognizing text' && onProgress) onProgress(m.progress); }
-        });
-        await worker.setParameters({
-          tessedit_char_whitelist: '0123456789',
-          tessedit_pageseg_mode: '7',  // single line
-        });
-        _tessWorker = worker;
-        _tessReady  = true;
-        _tessQueue.forEach(q => q.resolve(worker));
-        _tessQueue.length = 0;
-      } catch(e) {
-        _tessQueue.forEach(q => q.reject(e));
-        _tessQueue.length = 0;
-      }
-    };
-    script.onerror = e => { _tessQueue.forEach(q => q.reject(new Error('Echec chargement Tesseract'))); };
-    document.head.appendChild(script);
-  });
-}
-
-// Read a single cell canvas → number or null
-async function readCell(worker, cellCanvas) {
-  // Preprocess: invert if needed, enhance contrast
-  const w = cellCanvas.width, h = cellCanvas.height;
-  const pre = document.createElement('canvas');
-  pre.width = Math.max(w*2, 60); pre.height = Math.max(h*2, 60);
-  const ctx = pre.getContext('2d');
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, pre.width, pre.height);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(cellCanvas, 0, 0, pre.width, pre.height);
-
-  // Check average brightness - if dark bg (inverted), invert
-  const imgData = ctx.getImageData(0, 0, pre.width, pre.height);
-  let brightness = 0;
-  for (let i = 0; i < imgData.data.length; i+=4)
-    brightness += (imgData.data[i] + imgData.data[i+1] + imgData.data[i+2]) / 3;
-  brightness /= (imgData.data.length / 4);
-  if (brightness < 128) {
-    // Invert
-    for (let i = 0; i < imgData.data.length; i+=4) {
-      imgData.data[i]   = 255 - imgData.data[i];
-      imgData.data[i+1] = 255 - imgData.data[i+1];
-      imgData.data[i+2] = 255 - imgData.data[i+2];
-    }
-    ctx.putImageData(imgData, 0, 0);
-  }
-
-  try {
-    const { data: { text } } = await worker.recognize(pre);
-    const clean = text.replace(/\D/g, '').trim();
-    if (!clean) return null;
-    const n = parseInt(clean, 10);
-    return (n >= 1 && n <= 90) ? n : null;
-  } catch { return null; }
-}
-
-// Scan one card canvas → grid
-async function scanCardWithTesseract(worker, cardCanvas) {
-  const W = cardCanvas.width, H = cardCanvas.height;
-  // Margins: small inset to avoid borders
-  const mx = Math.round(W * 0.03), my = Math.round(H * 0.04);
-  const cellW = Math.round((W - mx*2) / 9);
-  const cellH = Math.round((H - my*2) / 3);
-
-  const grid = [Array(9).fill(null), Array(9).fill(null), Array(9).fill(null)];
-
-  for (let r = 0; r < 3; r++) {
-    for (let c = 0; c < 9; c++) {
-      const x = mx + c * cellW;
-      const y = my + r * cellH;
-      const cell = document.createElement('canvas');
-      cell.width  = cellW;
-      cell.height = cellH;
-      cell.getContext('2d').drawImage(cardCanvas, x, y, cellW, cellH, 0, 0, cellW, cellH);
-      const n = await readCell(worker, cell);
-      if (n !== null) {
-        const correctCol = n <= 9 ? 0 : n >= 80 ? 8 : Math.floor(n / 10);
-        // Place in correct column if empty
-        if (grid[r][correctCol] === null) grid[r][correctCol] = n;
-      }
-    }
-  }
-  return validateGrid(grid);
-}
-
-function ScannerModal({onSaveCards, onCancel, lm}) {
-  const PLATE_SIZES = [1, 6, 12, 18, 24, 36];
-  const [imgCanvas,  setImgCanvas]  = useState(null);
-  const [previewUrl, setPreviewUrl] = useState(null);
-  const [ps,         setPs]         = useState(1);
-  const [plateColor, setPlateColor] = useState(CARD_COLORS[0]);
-  const [cards,      setCards]      = useState([]);
-  const [scanning,   setScanning]   = useState(false);
-  const [progress,   setProgress]   = useState({step:0, total:0, label:''});
-  const [done,       setDone]       = useState(false);
-  const [error,      setError]      = useState(null);
-  const [ai,         setAi]         = useState(0);
-  const [ec,         setEc]         = useState(null);
-  const [ev,         setEv]         = useState('');
-  const [multiImgs,  setMultiImgs]  = useState([]); // for 18/36: multiple plates
-  const fRef = useRef(), cRef = useRef();
-
-  // Normalize image → portrait canvas
-  const normalizeImage = (arrayBuf) => new Promise(resolve => {
+// Normalize image canvas (EXIF + portrait)
+function normalizeImageCanvas(arrayBuf) {
+  return new Promise(resolve => {
     let orientation = 1;
     try {
       const view = new DataView(arrayBuf);
@@ -980,93 +860,181 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
       const rot = (orientation >= 5 && orientation <= 8);
       let w = rot ? img.height : img.width;
       let h = rot ? img.width  : img.height;
-      const MAX = 3000;
+      const MAX = 2000;
       const scale = Math.min(1, MAX / Math.max(w, h));
       const cw = Math.round(w*scale), ch = Math.round(h*scale);
       const cv = document.createElement('canvas');
       cv.width = cw; cv.height = ch;
       const ctx = cv.getContext('2d');
       ctx.save();
-      if (orientation===6) ctx.transform(0,1,-1,0,ch,0);
-      else if (orientation===8) ctx.transform(0,-1,1,0,0,cw);
-      else if (orientation===3) ctx.transform(-1,0,0,-1,cw,ch);
-      ctx.drawImage(img,0,0,cw,ch);
+      if (orientation===6){ctx.translate(ch,0);ctx.rotate(Math.PI/2);}
+      else if (orientation===8){ctx.translate(0,cw);ctx.rotate(-Math.PI/2);}
+      else if (orientation===3){ctx.translate(cw,ch);ctx.rotate(Math.PI);}
+      ctx.drawImage(img, 0, 0, cw, ch);
       ctx.restore();
       // Force portrait
-      const final = (cv.width > cv.height) ? (() => {
+      if (cv.width > cv.height) {
         const rv = document.createElement('canvas');
-        rv.width = ch; rv.height = cw;
-        rv.getContext('2d').transform ? (()=>{ const rc = rv.getContext('2d'); rc.translate(0,cw); rc.rotate(-Math.PI/2); rc.drawImage(cv,0,0); })() : null;
-        return rv;
-      })() : cv;
+        rv.width = cv.height; rv.height = cv.width;
+        const rc = rv.getContext('2d');
+        rc.translate(0, cv.width);
+        rc.rotate(-Math.PI/2);
+        rc.drawImage(cv, 0, 0);
+        URL.revokeObjectURL(url);
+        return resolve(rv);
+      }
       URL.revokeObjectURL(url);
-      resolve(final);
+      resolve(cv);
     };
     img.src = url;
   });
+}
 
-  const loadFile = async (f, addToMulti=false) => {
+// Crop canvas into N card canvases (column-major order)
+function cropCardCanvases(canvas, n) {
+  if (n === 1) {
+    const cv = document.createElement('canvas');
+    cv.width = canvas.width; cv.height = canvas.height;
+    cv.getContext('2d').drawImage(canvas, 0, 0);
+    return [cv];
+  }
+  const cols = 2, rows = Math.ceil(n / cols);
+  const W = canvas.width, H = canvas.height;
+  const mx = Math.round(W * 0.008), my = Math.round(H * 0.008);
+  const cardW = Math.round((W - mx*2) / cols);
+  const cardH = Math.round((H - my*2) / rows);
+  const crops = [];
+  for (let col=0; col<cols; col++) {
+    for (let row=0; row<rows; row++) {
+      const cv = document.createElement('canvas');
+      cv.width = cardW; cv.height = cardH;
+      cv.getContext('2d').drawImage(canvas, mx+col*cardW, my+row*cardH, cardW, cardH, 0, 0, cardW, cardH);
+      crops.push(cv);
+    }
+  }
+  return crops.slice(0, n);
+}
+
+// Send one card canvas to Google Vision, get grid back
+async function scanCardVision(cardCanvas) {
+  const b64 = cardCanvas.toDataURL('image/jpeg', 0.92).split(',')[1];
+  const res  = await fetch('/api/vision', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ image: b64 })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(()=>({}));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+  const { words } = await res.json();
+
+  // Filter to numbers 1-90 only
+  const nums = words
+    .map(w => ({ n: parseInt(w.text.replace(/\D/g,''), 10), x: w.x, y: w.y, w: w.w, h: w.h }))
+    .filter(w => !isNaN(w.n) && w.n >= 1 && w.n <= 90);
+
+  if (!nums.length) return emptyGrid();
+
+  // Determine card dimensions from bounding box of all numbers
+  const minX = Math.min(...nums.map(w=>w.x));
+  const maxX = Math.max(...nums.map(w=>w.x+w.w));
+  const minY = Math.min(...nums.map(w=>w.y));
+  const maxY = Math.max(...nums.map(w=>w.y+w.h));
+  const totalW = maxX - minX;
+  const totalH = maxY - minY;
+
+  // Assign each number to a row (0,1,2) based on Y position
+  // and to correct column based on its value
+  const grid = [Array(9).fill(null), Array(9).fill(null), Array(9).fill(null)];
+  const used = new Set();
+
+  // Sort by Y to determine row boundaries
+  const sortedY = [...nums].sort((a,b) => a.y - b.y);
+  // Find 3 row clusters using Y position thirds
+  const rowH = totalH / 3;
+
+  for (const w of nums) {
+    if (used.has(w.n)) continue;
+    // Determine row by Y position relative to card
+    const relY = w.y - minY;
+    const row = Math.min(2, Math.floor(relY / rowH));
+    // Correct column by number value
+    const col = w.n <= 9 ? 0 : w.n >= 80 ? 8 : Math.floor(w.n / 10);
+    // Place if slot is free
+    if (grid[row][col] === null) {
+      grid[row][col] = w.n;
+      used.add(w.n);
+    } else {
+      // Try adjacent rows
+      for (let r2=0; r2<3; r2++) {
+        if (r2 !== row && grid[r2][col] === null) {
+          grid[r2][col] = w.n;
+          used.add(w.n);
+          break;
+        }
+      }
+    }
+  }
+
+  return validateGrid(grid);
+}
+
+function ScannerModal({onSaveCards, onCancel, lm}) {
+  const PLATE_SIZES = [1, 6, 12, 18, 24, 36];
+  const [images,     setImages]     = useState([]); // [{canvas, url}]
+  const [ps,         setPs]         = useState(1);
+  const [plateColor, setPlateColor] = useState(CARD_COLORS[0]);
+  const [cards,      setCards]      = useState([]);
+  const [scanning,   setScanning]   = useState(false);
+  const [progress,   setProgress]   = useState({step:0, total:0});
+  const [done,       setDone]       = useState(false);
+  const [error,      setError]      = useState(null);
+  const [ai,         setAi]         = useState(0);
+  const [ec,         setEc]         = useState(null);
+  const [ev,         setEv]         = useState('');
+  const fRef = useRef(), cRef = useRef();
+  const needMulti = ps >= 18;
+
+  const loadFile = async (f) => {
     if (!f) return;
     setError(null);
-    const arrayBuf = await new Promise(r=>{ const fr=new FileReader(); fr.onload=e=>r(e.target.result); fr.readAsArrayBuffer(f); });
-    const canvas = await normalizeImage(arrayBuf);
-    const url = canvas.toDataURL('image/jpeg', 0.8);
-    if (addToMulti) {
-      setMultiImgs(prev => [...prev, {canvas, url}]);
+    const arrayBuf = await new Promise(r => {
+      const fr = new FileReader();
+      fr.onload = e => r(e.target.result);
+      fr.readAsArrayBuffer(f);
+    });
+    const canvas = await normalizeImageCanvas(arrayBuf);
+    const url    = canvas.toDataURL('image/jpeg', 0.7);
+    if (needMulti) {
+      setImages(prev => [...prev, {canvas, url}]);
     } else {
-      setImgCanvas(canvas);
-      setPreviewUrl(url);
-      setMultiImgs([]);
+      setImages([{canvas, url}]);
       setDone(false); setCards([]);
     }
   };
 
-  // Crop canvas into N individual card canvases (column-major order)
-  const cropCards = (canvas, n) => {
-    if (n === 1) {
-      const cv = document.createElement('canvas');
-      cv.width = canvas.width; cv.height = canvas.height;
-      cv.getContext('2d').drawImage(canvas, 0, 0);
-      return [cv];
-    }
-    const cols = 2, rows = Math.ceil(n / cols);
-    const W = canvas.width, H = canvas.height;
-    const mx = Math.round(W * 0.008), my = Math.round(H * 0.008);
-    const cardW = Math.round((W - mx*2) / cols);
-    const cardH = Math.round((H - my*2) / rows);
-    const crops = [];
-    // Column-major: col0 top→bottom, then col1 top→bottom
-    for (let col=0; col<cols; col++) {
-      for (let row=0; row<rows; row++) {
-        const cv = document.createElement('canvas');
-        cv.width = cardW; cv.height = cardH;
-        cv.getContext('2d').drawImage(canvas, mx+col*cardW, my+row*cardH, cardW, cardH, 0, 0, cardW, cardH);
-        crops.push(cv);
-      }
-    }
-    return crops.slice(0, n);
-  };
-
   const scan = async () => {
-    const sources = multiImgs.length > 0 ? multiImgs : (imgCanvas ? [{canvas:imgCanvas}] : []);
-    if (!sources.length) return;
-    setScanning(true); setError(null); setProgress({step:0,total:0,label:'Chargement OCR…'});
+    if (!images.length) return;
+    setScanning(true); setError(null); setProgress({step:0, total:ps});
     setCards([]);
 
     try {
-      // Load Tesseract
-      const worker = await getTessWorker();
+      // Build all crop canvases
       const allCrops = [];
-      for (const src of sources) {
-        const cardsPerPlate = multiImgs.length > 0 ? Math.round(ps / sources.length) : ps;
-        cropCards(src.canvas, cardsPerPlate).forEach(c => allCrops.push(c));
+      if (images.length === 1) {
+        cropCardCanvases(images[0].canvas, ps).forEach(c => allCrops.push(c));
+      } else {
+        const perPlate = Math.ceil(ps / images.length);
+        images.forEach(img => cropCardCanvases(img.canvas, perPlate).forEach(c => allCrops.push(c)));
       }
-      const total = Math.min(allCrops.length, ps);
+
+      const total   = Math.min(allCrops.length, ps);
       const results = [];
       for (let i=0; i<total; i++) {
-        setProgress({step:i+1, total, label:`Carton ${i+1}/${total}`});
+        setProgress({step:i+1, total});
         try {
-          const grid = await scanCardWithTesseract(worker, allCrops[i]);
+          const grid = await scanCardVision(allCrops[i]);
           results.push({id:i, validated:false, label:'', grid, scanError:null});
         } catch(e) {
           results.push({id:i, validated:false, label:'', grid:emptyGrid(), scanError:e.message});
@@ -1078,7 +1046,6 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
       setError(e.message);
     } finally {
       setScanning(false);
-      setProgress({step:0,total:0,label:''});
     }
   };
 
@@ -1086,27 +1053,29 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
     if (!ec) return;
     const [cid,r,c] = ec;
     const num = ev.trim()==='' ? null : parseInt(ev,10);
-    setCards(prev=>prev.map(card=>card.id!==cid?card:{...card,
-      grid:card.grid.map((row,ri)=>ri!==r?row:row.map((v,ci)=>ci!==c?v:(isNaN(num)?null:num)))
+    setCards(prev => prev.map(card => card.id!==cid ? card : {
+      ...card,
+      grid: card.grid.map((row,ri) => ri!==r ? row : row.map((v,ci) => ci!==c ? v : (isNaN(num)?null:num)))
     }));
     setEc(null);
   };
 
   const ac  = cards[ai];
-  const bg  = lm?'#fff':'#1a1548';
-  const brd = lm?'#e5e7eb':'rgba(245,197,24,.2)';
-  const needMulti = ps >= 18;
+  const bg  = lm ? '#fff' : '#1a1548';
+  const brd = lm ? '#e5e7eb' : 'rgba(245,197,24,.2)';
 
   return React.createElement('div', {
     style:{position:'fixed',inset:0,background:'rgba(0,0,0,.8)',zIndex:200,
       display:'flex',alignItems:'flex-end',justifyContent:'center',backdropFilter:'blur(6px)'},
-    onClick:onCancel},
+    onClick: onCancel},
+
     React.createElement('div', {
       style:{background:bg,border:`2px solid ${brd}`,borderRadius:'22px 22px 0 0',
         padding:`12px 16px max(28px,env(safe-area-inset-bottom))`,
         width:'100%',maxWidth:600,maxHeight:'96dvh',overflowY:'auto'},
-      onClick:e=>e.stopPropagation()},
+      onClick: e=>e.stopPropagation()},
 
+      // Handle
       React.createElement('div', {style:{width:44,height:5,borderRadius:99,
         background:lm?'#e5e7eb':'rgba(255,255,255,.15)',margin:'0 auto 14px'}}),
       React.createElement('div', {style:{fontFamily:"'Fredoka One',cursive",fontSize:17,
@@ -1118,138 +1087,148 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
           textTransform:'uppercase',color:lm?'#9ca3af':'rgba(255,255,255,.4)',marginBottom:5}},
           'Nombre de cartons sur la plaque'),
         React.createElement('div', {style:{display:'flex',gap:5,flexWrap:'wrap'}},
-          PLATE_SIZES.map(s=>
-            React.createElement('button', {key:s, onClick:()=>{setPs(s);setDone(false);setCards([]);setMultiImgs([]);},
+          PLATE_SIZES.map(s =>
+            React.createElement('button', {key:s,
+              onClick:()=>{setPs(s);setDone(false);setCards([]);if(!needMulti)setImages([]);},
               style:{padding:'8px 12px',borderRadius:8,cursor:'pointer',
                 fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:13,
                 border:`2px solid ${ps===s?(lm?'#2563eb':'#f5c518'):(lm?'#e5e7eb':'rgba(255,255,255,.1)')}`,
                 background:ps===s?(lm?'#eff6ff':'rgba(245,197,24,.08)'):(lm?'#f9fafb':'rgba(255,255,255,.03)'),
                 color:ps===s?(lm?'#2563eb':'#f5c518'):(lm?'#6b7280':'rgba(255,255,255,.4)'),
                 WebkitTapHighlightColor:'transparent'}},
-              `${s} carton${s>1?'s':''}`
-            )
+              `${s} carton${s>1?'s':''}`)
           )
         )
       ),
 
-      // Couleur de la plaque
+      // Couleur plaque
       React.createElement('div', {style:{marginBottom:10}},
         React.createElement('div', {style:{fontSize:9,fontWeight:700,letterSpacing:1.5,
           textTransform:'uppercase',color:lm?'#9ca3af':'rgba(255,255,255,.4)',marginBottom:5}},
           'Couleur des cartons'),
         React.createElement('div', {style:{display:'flex',gap:7,flexWrap:'wrap',alignItems:'center'}},
-          CARD_COLORS.map(c=>
+          CARD_COLORS.map(c =>
             React.createElement('button', {key:c, onClick:()=>setPlateColor(c),
               style:{width:28,height:28,borderRadius:'50%',background:c,cursor:'pointer',
                 border:`3px solid ${plateColor===c?'#fff':'transparent'}`,
                 boxShadow:plateColor===c?`0 0 0 2px ${c}`:'none',
-                transform:plateColor===c?'scale(1.2)':'scale(1)',transition:'all .15s',
-                WebkitTapHighlightColor:'transparent'}})
+                transform:plateColor===c?'scale(1.2)':'scale(1)',
+                transition:'all .15s',WebkitTapHighlightColor:'transparent'}})
           ),
-          React.createElement('input', {type:'color',value:plateColor,
+          React.createElement('input', {type:'color', value:plateColor,
             onChange:e=>setPlateColor(e.target.value),
-            style:{width:28,height:28,borderRadius:'50%',border:`2px solid ${lm?'#e5e7eb':'rgba(255,255,255,.2)'}`,padding:0,cursor:'pointer'}})
+            style:{width:28,height:28,borderRadius:'50%',
+              border:`2px solid ${lm?'#e5e7eb':'rgba(255,255,255,.2)'}`,padding:0,cursor:'pointer'}})
         )
       ),
 
-      // Zone(s) image
+      // Zone image(s)
       needMulti
         ? React.createElement('div', {style:{marginBottom:10}},
-            React.createElement('div', {style:{fontSize:10,color:lm?'#6b7280':'rgba(255,255,255,.5)',marginBottom:6,fontWeight:600}},
-              `${ps} cartons = plusieurs photos. Importez-les une par une (${Math.ceil(ps/12)} photos de 12 conseillé).`),
+            React.createElement('div', {style:{fontSize:11,color:lm?'#6b7280':'rgba(255,255,255,.5)',
+              marginBottom:6,lineHeight:1.5}},
+              `📋 ${ps} cartons → importer ${Math.ceil(ps/12)} photos (12 cartons/photo conseillé)`),
             React.createElement('div', {style:{display:'flex',gap:6,flexWrap:'wrap',marginBottom:6}},
-              multiImgs.map((m,i)=>
-                React.createElement('img', {key:i, src:m.url, alt:'',
-                  style:{width:80,height:60,objectFit:'cover',borderRadius:6,
-                    border:`2px solid ${lm?'#e5e7eb':'rgba(255,255,255,.2)'}` }})
+              images.map((m,i) =>
+                React.createElement('div', {key:i, style:{position:'relative'}},
+                  React.createElement('img', {src:m.url, alt:'',
+                    style:{width:80,height:60,objectFit:'cover',borderRadius:6,
+                      border:`2px solid ${lm?'#e5e7eb':'rgba(255,255,255,.2)'}`}}),
+                  React.createElement('button', {
+                    onClick:()=>setImages(prev=>prev.filter((_,j)=>j!==i)),
+                    style:{position:'absolute',top:-6,right:-6,width:18,height:18,borderRadius:'50%',
+                      background:'#ef4444',color:'#fff',border:'none',cursor:'pointer',
+                      fontSize:10,fontWeight:900,display:'flex',alignItems:'center',justifyContent:'center'}},
+                    '×')
+                )
               ),
-              React.createElement('button', {
-                onClick:()=>fRef.current.click(),
-                style:{width:80,height:60,borderRadius:6,cursor:'pointer',fontSize:20,
+              React.createElement('button', {onClick:()=>fRef.current.click(),
+                style:{width:80,height:60,borderRadius:6,cursor:'pointer',fontSize:24,
                   border:`2px dashed ${lm?'#d1d5db':'rgba(255,255,255,.2)'}`,
                   background:lm?'#f9fafb':'rgba(255,255,255,.04)',
                   color:lm?'#9ca3af':'rgba(255,255,255,.4)'}}, '+')
             )
           )
-        : !previewUrl
+        : images.length===0
           ? React.createElement('div', {
               style:{border:`2px dashed ${lm?'#d1d5db':'rgba(255,255,255,.15)'}`,borderRadius:10,
                 padding:'20px',textAlign:'center',cursor:'pointer',
                 background:lm?'#f9fafb':'rgba(255,255,255,.02)',marginBottom:10},
               onClick:()=>fRef.current.click()},
-              React.createElement('div', {style:{fontSize:32}}, '🎴'),
-              React.createElement('div', {style:{fontSize:13,color:lm?'#6b7280':'rgba(255,255,255,.35)',marginTop:6}}, 'Importer une photo'))
-          : React.createElement('img', {src:previewUrl, alt:'',
-              style:{width:'100%',maxHeight:160,objectFit:'contain',borderRadius:8,
+              React.createElement('div', {style:{fontSize:36,marginBottom:6}}, '🎴'),
+              React.createElement('div', {style:{fontSize:13,color:lm?'#6b7280':'rgba(255,255,255,.35)',fontWeight:600}},
+                'Importer une photo'))
+          : React.createElement('img', {src:images[0].url, alt:'',
+              style:{width:'100%',maxHeight:150,objectFit:'contain',borderRadius:8,
                 border:`1px solid ${lm?'#e5e7eb':'rgba(255,255,255,.1)'}`,marginBottom:10}}),
 
       // Inputs cachés
       React.createElement('input', {ref:fRef, type:'file', accept:'image/*',
-        onChange:e=>loadFile(e.target.files[0], needMulti), style:{display:'none'}}),
+        onChange:e=>loadFile(e.target.files[0]), style:{display:'none'}}),
       React.createElement('input', {ref:cRef, type:'file', accept:'image/*', capture:'environment',
-        onChange:e=>loadFile(e.target.files[0], needMulti), style:{display:'none'}}),
+        onChange:e=>loadFile(e.target.files[0]), style:{display:'none'}}),
 
-      // Boutons action
+      // Boutons
       React.createElement('div', {style:{display:'flex',gap:7,marginBottom:10}},
         React.createElement('button', {style:{...ghostBs(lm),flex:1,padding:'9px',fontSize:12},
           onClick:()=>cRef.current.click()}, '📸 Caméra'),
         React.createElement('button', {style:{...ghostBs(lm),flex:1,padding:'9px',fontSize:12},
           onClick:()=>fRef.current.click()}, '🖼️ Galerie'),
-        (imgCanvas||multiImgs.length>0)&&!scanning
-          ? React.createElement('button', {style:{...primaryBs,flex:2,padding:'9px',fontSize:12}, onClick:scan}, '✨ Analyser')
+        images.length>0 && !scanning
+          ? React.createElement('button', {style:{...primaryBs,flex:2,padding:'9px',fontSize:13},
+              onClick:scan}, '✨ Analyser')
           : scanning
-            ? React.createElement('button', {style:{...primaryBs,flex:2,padding:'9px',fontSize:12,opacity:.7}, disabled:true},
-                progress.total>0 ? `⏳ ${progress.step}/${progress.total}` : '⏳ Chargement…')
+            ? React.createElement('button', {style:{...primaryBs,flex:2,padding:'9px',fontSize:12,opacity:.7},
+                disabled:true},
+                progress.total>0?`⏳ ${progress.step}/${progress.total}`:'⏳…')
             : null
       ),
 
-      // Popup scan en cours
-      scanning&&React.createElement('div', {
-        style:{position:'fixed',inset:0,zIndex:300,display:'flex',
-          alignItems:'center',justifyContent:'center',
+      // Popup progression
+      scanning && React.createElement('div', {
+        style:{position:'fixed',inset:0,zIndex:300,
+          display:'flex',alignItems:'center',justifyContent:'center',
           background:'rgba(0,0,0,.65)',backdropFilter:'blur(4px)'}},
-        React.createElement('div', {
-          style:{background:lm?'#fff':'#1e1b4b',borderRadius:18,padding:'28px 32px',
-            textAlign:'center',minWidth:270,
-            border:`2px solid ${lm?'#e5e7eb':'rgba(245,197,24,.3)'}`}},
+        React.createElement('div', {style:{background:lm?'#fff':'#1e1b4b',borderRadius:18,
+          padding:'28px 32px',textAlign:'center',minWidth:270,
+          border:`2px solid ${lm?'#e5e7eb':'rgba(245,197,24,.3)'}`}},
           React.createElement('div', {style:{fontSize:36,marginBottom:10,
             animation:'spin 1.2s linear infinite',display:'inline-block'}}, '🔍'),
           React.createElement('div', {style:{fontFamily:"'Fredoka One',cursive",fontSize:18,
-            color:lm?'#1e293b':'#f5c518',marginBottom:8}}, progress.label||'Préparation…'),
-          progress.total>0&&React.createElement('div', null,
-            React.createElement('div', {style:{width:220,height:8,background:lm?'#e5e7eb':'rgba(255,255,255,.15)',
-              borderRadius:99,overflow:'hidden',margin:'0 auto 8px'}},
-              React.createElement('div', {style:{height:8,borderRadius:99,
+            color:lm?'#1e293b':'#f5c518',marginBottom:8}},
+            progress.total>0 ? `Carton ${progress.step} / ${progress.total}` : 'Analyse…'),
+          progress.total>0 && React.createElement('div', null,
+            React.createElement('div', {style:{width:220,height:6,
+              background:lm?'#e5e7eb':'rgba(255,255,255,.15)',borderRadius:99,overflow:'hidden',margin:'0 auto 6px'}},
+              React.createElement('div', {style:{height:6,borderRadius:99,transition:'width .3s',
                 width:`${Math.round(progress.step/progress.total*100)}%`,
-                background:'linear-gradient(90deg,#f5c518,#ff4fa3)',transition:'width .3s'}})
-            ),
+                background:'linear-gradient(90deg,#f5c518,#ff4fa3)'}})),
             React.createElement('div', {style:{fontSize:12,color:lm?'#6b7280':'rgba(255,255,255,.5)'}},
-              `${progress.step} / ${progress.total} cartons`)
+              'Google Vision OCR…')
           )
         )
       ),
 
       // Erreur
-      !scanning&&error&&React.createElement('div', {
+      !scanning && error && React.createElement('div', {
         style:{background:lm?'#fef2f2':'rgba(255,79,163,.07)',
           border:`1px solid ${lm?'#fca5a5':'rgba(255,79,163,.3)'}`,
           borderRadius:8,padding:'8px 10px',color:lm?'#dc2626':'#ff4fa3',
-          fontSize:11,marginBottom:10}},
+          fontSize:11,marginBottom:10,lineHeight:1.5}},
         '⚠️ ', error),
 
       // Validation
-      !scanning&&done&&ac&&React.createElement(React.Fragment, null,
+      !scanning && done && ac && React.createElement(React.Fragment, null,
         // Onglets
-        cards.length>1&&React.createElement('div', {style:{display:'flex',gap:4,flexWrap:'wrap',marginBottom:10}},
-          cards.map((c,i)=>
+        cards.length>1 && React.createElement('div', {style:{display:'flex',gap:4,flexWrap:'wrap',marginBottom:10}},
+          cards.map((c,i) =>
             React.createElement('button', {key:i, onClick:()=>setAi(i),
               style:{padding:'4px 8px',borderRadius:6,fontSize:11,fontWeight:700,cursor:'pointer',
                 border:`1.5px solid ${ai===i?(lm?'#2563eb':'#f5c518'):c.validated?(lm?'#16a34a':'#00e676'):(lm?'#e5e7eb':'rgba(255,255,255,.1)')}`,
                 background:ai===i?(lm?'#eff6ff':'rgba(245,197,24,.08)'):c.validated?(lm?'#dcfce7':'rgba(0,230,118,.08)'):(lm?'#f9fafb':'rgba(255,255,255,.02)'),
                 color:ai===i?(lm?'#2563eb':'#f5c518'):c.validated?(lm?'#16a34a':'#00e676'):(lm?'#6b7280':'rgba(255,255,255,.4)'),
                 WebkitTapHighlightColor:'transparent'}},
-              `C${i+1}`, c.validated?' ✓':''
-            )
+              `C${i+1}`, c.validated?' ✓':'')
           )
         ),
 
@@ -1276,9 +1255,10 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
               React.createElement('tr',null,
                 React.createElement('th',{style:{width:'5%',background:lm?'#f9fafb':'rgba(0,0,0,.2)',
                   fontSize:7,color:lm?'#9ca3af':'rgba(255,255,255,.3)',padding:'2px'}}),
-                COL_LABELS.map((l,i)=>React.createElement('th',{key:i,
-                  style:{fontSize:6,color:lm?'#6b7280':'rgba(255,255,255,.4)',padding:'2px 1px',
-                    textAlign:'center',background:lm?'#f9fafb':'rgba(0,0,0,.2)',fontWeight:800}},l))
+                COL_LABELS.map((l,i)=>
+                  React.createElement('th',{key:i,style:{fontSize:6,color:lm?'#6b7280':'rgba(255,255,255,.4)',
+                    padding:'2px 1px',textAlign:'center',
+                    background:lm?'#f9fafb':'rgba(0,0,0,.2)',fontWeight:800}},l))
               )
             ),
             React.createElement('tbody',null,
@@ -1297,9 +1277,13 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
                       isE
                         ? React.createElement('input',{autoFocus:true,
                             style:{width:'100%',border:'none',background:'transparent',textAlign:'center',
-                              fontSize:11,fontWeight:800,padding:'2px 0',outline:'none',color:lm?'#1e293b':'#fff'},
+                              fontSize:11,fontWeight:800,padding:'2px 0',outline:'none',
+                              color:lm?'#1e293b':'#fff'},
                             value:ev,onChange:e=>setEv(e.target.value),
-                            onKeyDown:e=>{if(e.key==='Enter'||e.key==='Tab'){e.preventDefault();commitEdit();}if(e.key==='Escape')setEc(null);},
+                            onKeyDown:e=>{
+                              if(e.key==='Enter'||e.key==='Tab'){e.preventDefault();commitEdit();}
+                              if(e.key==='Escape')setEc(null);
+                            },
                             onBlur:commitEdit})
                         : React.createElement('span',{style:{fontSize:10,fontWeight:800,
                             color:cell!==null?(lm?'#1e293b':'rgba(255,255,255,.85)'):'transparent'}},
@@ -1313,7 +1297,8 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
         ),
 
         // Compteur + valider
-        React.createElement('div', {style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}},
+        React.createElement('div', {style:{display:'flex',justifyContent:'space-between',
+          alignItems:'center',marginBottom:12}},
           React.createElement('span', {style:{fontSize:11,color:lm?'#6b7280':'rgba(255,255,255,.4)',fontWeight:600}},
             `${ac.grid.flat().filter(v=>v!==null).length}/15 numéros`),
           React.createElement('button', {
@@ -1330,7 +1315,7 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
         )
       ),
 
-      // Bas
+      // Actions bas
       React.createElement('div', {style:{display:'flex',gap:8}},
         React.createElement('button', {style:ghostBs(lm), onClick:onCancel}, 'Annuler'),
         done&&cards.length>0&&cards.every(c=>c.validated)&&

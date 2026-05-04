@@ -929,84 +929,154 @@ async function scanCardVision(cardCanvas) {
   }
   const { words, lines } = await res.json();
 
-  // ── Strategy: use the `lines` array Google Vision returns natively.
-  // Each element of `lines` is a string of space-separated tokens Vision
-  // placed on the same visual line.  This is far more reliable than
-  // re-clustering words by Y-coordinate ourselves.
-  //
-  // Fallback: if the server didn't return `lines` (older backend), we
-  // rebuild them from the `words` array with Y-clustering (legacy path).
-
-  let lineTokens = []; // array of arrays of valid loto numbers, one per Vision line
+  // ── Étape 1 : extraire TOUS les numéros valides depuis les lignes Vision.
+  // On concatène toutes les lignes en un seul pool de nombres 1–90,
+  // en conservant leur ordre d'apparition (= ordre top→bottom / left→right
+  // tel que Vision les a lus).
+  const allNums = []; // [{n, lineIdx}]
 
   if (Array.isArray(lines) && lines.length > 0) {
-    // Primary path — use Vision's own line grouping
-    lineTokens = lines.map(lineText => {
-      const tokens = String(lineText).split(/\s+/);
-      return tokens
-        .map(t => parseInt(t.replace(/\D/g,''), 10))
-        .filter(n => !isNaN(n) && n >= 1 && n <= 90);
-    }).filter(row => row.length > 0);
+    lines.forEach((lineText, li) => {
+      String(lineText).split(/\s+/).forEach(tok => {
+        // Gérer les tokens collés type "2233" → essayer de les scinder
+        const clean = tok.replace(/[^\d]/g, '');
+        if (!clean) return;
+        // D'abord essayer le token entier
+        const whole = parseInt(clean, 10);
+        if (whole >= 1 && whole <= 90) {
+          allNums.push({ n: whole, lineIdx: li });
+          return;
+        }
+        // Sinon, essayer de scinder en paires de 1–2 chiffres (ex: "2233" → 22, 33)
+        let pos = 0;
+        while (pos < clean.length) {
+          const two = parseInt(clean.slice(pos, pos + 2), 10);
+          const one = parseInt(clean.slice(pos, pos + 1), 10);
+          if (pos + 2 <= clean.length && two >= 1 && two <= 90) {
+            allNums.push({ n: two, lineIdx: li });
+            pos += 2;
+          } else if (one >= 1 && one <= 9) {
+            allNums.push({ n: one, lineIdx: li });
+            pos += 1;
+          } else {
+            pos += 1;
+          }
+        }
+      });
+    });
   } else if (Array.isArray(words) && words.length > 0) {
-    // Fallback path — Y-clustering on word bounding boxes
+    // Fallback Y-clustering si pas de lignes (ancien backend)
     const nums = words
-      .map(w => ({
-        n: parseInt(w.text.replace(/\D/g,''), 10),
-        cy: w.y + w.h / 2,
-        h: w.h
-      }))
+      .map(w => ({ n: parseInt(w.text.replace(/\D/g,''), 10), cy: w.y + w.h / 2, h: w.h }))
       .filter(w => !isNaN(w.n) && w.n >= 1 && w.n <= 90);
-
     if (nums.length) {
-      const medH = [...nums].sort((a,b)=>a.h-b.h)[Math.floor(nums.length/2)].h || 20;
-      const tol  = medH * 0.7;
+      const medH = [...nums].sort((a,b) => a.h - b.h)[Math.floor(nums.length / 2)].h || 20;
+      const tol = medH * 0.65;
       const sorted = [...nums].sort((a,b) => a.cy - b.cy);
       const clusters = [];
       for (const w of sorted) {
         let placed = false;
         for (const cl of clusters) {
-          const avgY = cl.reduce((s,c)=>s+c.cy,0)/cl.length;
+          const avgY = cl.reduce((s,c) => s + c.cy, 0) / cl.length;
           if (Math.abs(w.cy - avgY) < tol) { cl.push(w); placed = true; break; }
         }
         if (!placed) clusters.push([w]);
       }
-      // sort clusters top→bottom, keep the 3 largest
       clusters.sort((a,b) => b.length - a.length);
-      const top3 = clusters.slice(0,3).sort((a,b) => {
-        const ay = a.reduce((s,c)=>s+c.cy,0)/a.length;
-        const by = b.reduce((s,c)=>s+c.cy,0)/b.length;
+      const top3 = clusters.slice(0, 3).sort((a,b) => {
+        const ay = a.reduce((s,c) => s + c.cy, 0) / a.length;
+        const by = b.reduce((s,c) => s + c.cy, 0) / b.length;
         return ay - by;
       });
-      lineTokens = top3.map(cl => cl.map(w => w.n));
+      top3.forEach((cl, li) => cl.forEach(w => allNums.push({ n: w.n, lineIdx: li })));
     }
   }
 
-  if (!lineTokens.length) return emptyGrid();
+  if (!allNums.length) return emptyGrid();
 
-  // ── Filter: keep only lines that look like loto rows (2–5 numbers)
-  // and discard header/footer lines (e.g. a single number like a card ID).
-  const lotoLines = lineTokens.filter(row => row.length >= 2 && row.length <= 5);
+  // ── Étape 2 : dédupliquer (garder la première occurrence)
+  const seen = new Set();
+  const unique = allNums.filter(({ n }) => { if (seen.has(n)) return false; seen.add(n); return true; });
 
-  // ── If we have more than 3 candidate lines, keep the 3 with the most numbers
-  const top3Lines = lotoLines.length > 3
-    ? [...lotoLines].sort((a,b) => b.length - a.length).slice(0,3)
-    : lotoLines;
+  // ── Étape 3 : assignment colonne-first.
+  // Règle loto française : chaque colonne ne peut avoir qu'un seul numéro PAR LIGNE,
+  // et au plus 1 numéro par colonne sur tout le carton (sauf col 0 = 1-9 et col 8 = 80-90
+  // qui peuvent avoir 2 numéros sur la même colonne dans des lignes différentes).
+  // → On place chaque numéro dans la colonne déterministe (n<=9→col0, n>=80→col8, sinon floor(n/10)),
+  //   et on attribue la ligne (0, 1 ou 2) selon l'ordre d'arrivée dans cette colonne.
+  //
+  // En pratique : on trie les numéros par lineIdx Vision (ordre visuel top→bottom),
+  // puis pour chaque colonne on assigne ligne 0 au premier, ligne 1 au deuxième, etc.
 
-  // Re-sort by original order (index in lineTokens = top-to-bottom order)
-  top3Lines.sort((a,b) => lineTokens.indexOf(a) - lineTokens.indexOf(b));
+  const colBuckets = Array.from({ length: 9 }, () => []); // colBuckets[col] = [n, ...]
+  for (const { n } of unique) {
+    const col = n <= 9 ? 0 : n >= 80 ? 8 : Math.floor(n / 10);
+    if (colBuckets[col].length < 3) colBuckets[col].push(n);
+  }
 
-  // ── Fill the grid row by row
+  // ── Étape 4 : déduire l'appartenance à une ligne (0/1/2).
+  // On ne peut pas savoir a priori à quelle ligne appartient chaque numéro
+  // si on n'a que des colonnes. On utilise l'ordre Vision (lineIdx) pour voter.
+  //
+  // Stratégie : regrouper les numéros par lineIdx Vision → chaque groupe
+  // = une demi-ligne ou une ligne complète. Puis fusionner les petits groupes
+  // adjacents qui partagent des colonnes complémentaires (= même ligne du carton).
+
+  // Grouper par lineIdx
+  const byLine = {};
+  for (const { n, lineIdx } of unique) {
+    if (!byLine[lineIdx]) byLine[lineIdx] = [];
+    byLine[lineIdx].push(n);
+  }
+  const visionLines = Object.keys(byLine).sort((a,b) => +a - +b).map(k => byLine[k]);
+
+  // Fusion des lignes Vision qui sont des fragments de la même ligne loto :
+  // deux lignes Vision consécutives sont fusionnées si elles ne partagent
+  // aucune colonne (= chiffres complémentaires sur la même rangée du carton).
+  function colOf(n) { return n <= 9 ? 0 : n >= 80 ? 8 : Math.floor(n / 10); }
+  function colSet(nums) { return new Set(nums.map(colOf)); }
+  function hasColConflict(a, b) {
+    const sa = colSet(a);
+    for (const n of b) { if (sa.has(colOf(n))) return true; }
+    return false;
+  }
+
+  const merged = [];
+  for (const vl of visionLines) {
+    if (merged.length > 0) {
+      const prev = merged[merged.length - 1];
+      const prevCount = prev.length;
+      const totalWouldBe = prevCount + vl.length;
+      // Fusionner si : pas de conflit de colonnes ET résultat <= 5 numéros
+      if (!hasColConflict(prev, vl) && totalWouldBe <= 5) {
+        merged[merged.length - 1] = [...prev, ...vl];
+        continue;
+      }
+    }
+    merged.push([...vl]);
+  }
+
+  // Filtrer : garder les lignes avec 1 à 5 numéros (ignorer lignes parasites à 0)
+  const candidates = merged.filter(r => r.length >= 1 && r.length <= 5);
+
+  // Si plus de 3 candidats, garder les 3 plus riches (max numéros)
+  const top3 = candidates.length > 3
+    ? [...candidates].sort((a,b) => b.length - a.length).slice(0, 3)
+        .sort((a,b) => candidates.indexOf(a) - candidates.indexOf(b))
+    : candidates;
+
+  // ── Étape 5 : remplir la grille
   const grid = [Array(9).fill(null), Array(9).fill(null), Array(9).fill(null)];
-  const used = new Set();
+  const used2 = new Set();
 
-  top3Lines.forEach((row, rowIdx) => {
+  top3.forEach((row, rowIdx) => {
     if (rowIdx > 2) return;
     for (const n of row) {
-      if (used.has(n)) continue;
-      const col = n <= 9 ? 0 : n >= 80 ? 8 : Math.floor(n / 10);
+      if (used2.has(n)) continue;
+      const col = colOf(n);
       if (grid[rowIdx][col] === null) {
         grid[rowIdx][col] = n;
-        used.add(n);
+        used2.add(n);
       }
     }
   });

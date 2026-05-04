@@ -890,44 +890,68 @@ function normalizeImageCanvas(arrayBuf, forcePortrait=true) {
   });
 }
 
-// Crop canvas into N card canvases (column-major order)
+// Disposition connue pour chaque taille de plaque [cols, rows]
+const PLATE_LAYOUTS = {
+  1:  [1, 1],
+  6:  [2, 3],
+  12: [3, 4],
+  18: [3, 6],
+  24: [4, 6],
+  36: [6, 6],
+};
+
+// Crop canvas into N card canvases, row-major order (left→right, top→bottom)
 function cropCardCanvases(canvas, n) {
-  if (n === 1) {
-    const cv = document.createElement('canvas');
-    cv.width = canvas.width; cv.height = canvas.height;
-    cv.getContext('2d').drawImage(canvas, 0, 0);
-    return [cv];
-  }
-  const cols = 2, rows = Math.ceil(n / cols);
+  const [cols, rows] = PLATE_LAYOUTS[n] || [2, Math.ceil(n / 2)];
   const W = canvas.width, H = canvas.height;
-  const mx = Math.round(W * 0.008), my = Math.round(H * 0.008);
-  const cardW = Math.round((W - mx*2) / cols);
-  const cardH = Math.round((H - my*2) / rows);
+
+  // Marge extérieure (bords de la plaque)
+  const bx = Math.round(W * 0.012);
+  const by = Math.round(H * 0.012);
+  // Zone utile
+  const useW = W - bx * 2;
+  const useH = H - by * 2;
+  // Espacement inter-cartons (gouttière entre cartons)
+  const gapX = cols > 1 ? Math.round(useW * 0.012) : 0;
+  const gapY = rows > 1 ? Math.round(useH * 0.010) : 0;
+  // Taille d'un carton
+  const cardW = Math.round((useW - gapX * (cols - 1)) / cols);
+  const cardH = Math.round((useH - gapY * (rows - 1)) / rows);
+
   const crops = [];
-  for (let col=0; col<cols; col++) {
-    for (let row=0; row<rows; row++) {
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      if (crops.length >= n) break;
+      const x = bx + col * (cardW + gapX);
+      const y = by + row * (cardH + gapY);
       const cv = document.createElement('canvas');
       cv.width = cardW; cv.height = cardH;
-      cv.getContext('2d').drawImage(canvas, mx+col*cardW, my+row*cardH, cardW, cardH, 0, 0, cardW, cardH);
+      cv.getContext('2d').drawImage(canvas, x, y, cardW, cardH, 0, 0, cardW, cardH);
       crops.push(cv);
     }
   }
-  return crops.slice(0, n);
+  return crops;
 }
 
 // Extract one cell canvas from card canvas
 function extractCell(cardCanvas, row, col, rows=3, cols=9) {
   const W = cardCanvas.width, H = cardCanvas.height;
-  // Small margin to avoid borders between cells
-  const mx = Math.round(W * 0.01), my = Math.round(H * 0.015);
-  const cellW = (W - mx*2) / cols;
-  const cellH = (H - my*2) / rows;
-  // Inner padding to focus on the number itself
-  const pad = 0.1;
-  const x = Math.round(mx + col*cellW + cellW*pad);
-  const y = Math.round(my + row*cellH + cellH*pad);
-  const w = Math.round(cellW * (1-pad*2));
-  const h = Math.round(cellH * (1-pad*2));
+  // Marge extérieure du carton (header numéro + bords)
+  // Le header prend ~18% de la hauteur, on le saute
+  const headerH = Math.round(H * 0.18);
+  const bx = Math.round(W * 0.015);
+  const by = headerH;
+  const useW = W - bx * 2;
+  const useH = H - by - Math.round(H * 0.01); // petit bord bas
+  const cellW = useW / cols;
+  const cellH = useH / rows;
+  // Padding intérieur de chaque cellule pour éviter les traits de grille
+  const px = cellW * 0.12;
+  const py = cellH * 0.12;
+  const x = Math.round(bx + col * cellW + px);
+  const y = Math.round(by + row * cellH + py);
+  const w = Math.round(cellW - px * 2);
+  const h = Math.round(cellH - py * 2);
   const cv = document.createElement('canvas');
   cv.width  = Math.max(w, 1);
   cv.height = Math.max(h, 1);
@@ -987,6 +1011,7 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
   const [cropIdx,    setCropIdx]    = useState(null); // index of image being cropped
   const [cropBox,    setCropBox]    = useState(null); // {x,y,w,h} in % of display
   const [cropDrag,   setCropDrag]   = useState(null); // drag start info
+  const [showGrid,   setShowGrid]   = useState(false); // show cut grid overlay
   const cropImgRef = useRef();
   const fRef = useRef(), cRef = useRef();
   const needMulti = ps >= 18;
@@ -1143,24 +1168,37 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
         )
       ),
 
-      // Couleur plaque
-      React.createElement('div', {style:{marginBottom:10}},
+      // Couleur plaque — mise en avant, choix obligatoire avant scan
+      React.createElement('div', {style:{
+        marginBottom:12,
+        padding:'10px 12px',
+        borderRadius:12,
+        background: lm ? '#fafafa' : 'rgba(255,255,255,.04)',
+        border:`2px solid ${plateColor}44`,
+      }},
         React.createElement('div', {style:{fontSize:9,fontWeight:700,letterSpacing:1.5,
-          textTransform:'uppercase',color:lm?'#9ca3af':'rgba(255,255,255,.4)',marginBottom:5}},
-          'Couleur des cartons'),
-        React.createElement('div', {style:{display:'flex',gap:7,flexWrap:'wrap',alignItems:'center'}},
+          textTransform:'uppercase',color:lm?'#9ca3af':'rgba(255,255,255,.4)',marginBottom:8}},
+          '🎨 Couleur de ce lot de cartons'),
+        React.createElement('div', {style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
           CARD_COLORS.map(c =>
             React.createElement('button', {key:c, onClick:()=>setPlateColor(c),
-              style:{width:28,height:28,borderRadius:'50%',background:c,cursor:'pointer',
+              style:{width:32,height:32,borderRadius:'50%',background:c,cursor:'pointer',
                 border:`3px solid ${plateColor===c?'#fff':'transparent'}`,
-                boxShadow:plateColor===c?`0 0 0 2px ${c}`:'none',
-                transform:plateColor===c?'scale(1.2)':'scale(1)',
+                boxShadow:plateColor===c?`0 0 0 3px ${c}, 0 0 0 5px ${c}44`:'none',
+                transform:plateColor===c?'scale(1.25)':'scale(1)',
                 transition:'all .15s',WebkitTapHighlightColor:'transparent'}})
           ),
           React.createElement('input', {type:'color', value:plateColor,
             onChange:e=>setPlateColor(e.target.value),
-            style:{width:28,height:28,borderRadius:'50%',
+            style:{width:32,height:32,borderRadius:'50%',
               border:`2px solid ${lm?'#e5e7eb':'rgba(255,255,255,.2)'}`,padding:0,cursor:'pointer'}})
+        ),
+        React.createElement('div', {style:{marginTop:8,display:'flex',alignItems:'center',gap:8}},
+          React.createElement('div', {style:{
+            width:20,height:20,borderRadius:4,background:plateColor,
+            flexShrink:0,border:`1px solid rgba(0,0,0,.15)`}}),
+          React.createElement('span', {style:{fontSize:11,color:lm?'#6b7280':'rgba(255,255,255,.45)',fontWeight:600}},
+            `Tous les cartons de ce scan auront cette couleur`)
         )
       ),
 
@@ -1211,14 +1249,41 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
               React.createElement('img', {src:images[0].url, alt:'',
                 style:{width:'100%',maxHeight:150,objectFit:'contain',borderRadius:8,
                   border:`1px solid ${lm?'#e5e7eb':'rgba(255,255,255,.1)'}`}}),
-              React.createElement('button', {
-                onClick:()=>{setCropIdx(0);setCropBox(null);},
-                title:'Recadrer',
-                style:{position:'absolute',bottom:6,right:6,padding:'5px 10px',
-                  borderRadius:7,cursor:'pointer',fontSize:12,fontWeight:700,
-                  background:'rgba(0,0,0,.55)',color:'#fff',border:'1.5px solid rgba(255,255,255,.4)',
-                  backdropFilter:'blur(4px)',WebkitTapHighlightColor:'transparent'}},
-                '✂️ Recadrer')
+              // Overlay grille de découpe
+              showGrid && ps > 1 && (() => {
+                const [cols, rows] = PLATE_LAYOUTS[ps] || [2, Math.ceil(ps/2)];
+                const lines = [];
+                for (let c=1; c<cols; c++) lines.push(
+                  React.createElement('div', {key:`v${c}`, style:{
+                    position:'absolute', top:'1.2%', bottom:'1.2%',
+                    left:`${1.2 + c*(100-2.4)/cols}%`, width:2,
+                    background:'rgba(245,197,24,.85)', pointerEvents:'none'}})
+                );
+                for (let r=1; r<rows; r++) lines.push(
+                  React.createElement('div', {key:`h${r}`, style:{
+                    position:'absolute', left:'1.2%', right:'1.2%',
+                    top:`${1.2 + r*(100-2.4)/rows}%`, height:2,
+                    background:'rgba(245,197,24,.85)', pointerEvents:'none'}})
+                );
+                return lines;
+              })(),
+              React.createElement('div', {style:{position:'absolute',bottom:6,right:6,display:'flex',gap:5}},
+                ps > 1 && React.createElement('button', {
+                  onClick:()=>setShowGrid(g=>!g),
+                  title:'Vérifier le découpage',
+                  style:{padding:'5px 10px',borderRadius:7,cursor:'pointer',fontSize:11,fontWeight:700,
+                    background:showGrid?'rgba(245,197,24,.9)':'rgba(0,0,0,.55)',
+                    color:showGrid?'#000':'#fff',border:`1.5px solid ${showGrid?'#f5c518':'rgba(255,255,255,.4)'}`,
+                    backdropFilter:'blur(4px)',WebkitTapHighlightColor:'transparent'}},
+                  showGrid ? '✓ Grille OK' : '📐 Vérifier'),
+                React.createElement('button', {
+                  onClick:()=>{setCropIdx(0);setCropBox(null);setShowGrid(false);},
+                  title:'Recadrer',
+                  style:{padding:'5px 10px',borderRadius:7,cursor:'pointer',fontSize:12,fontWeight:700,
+                    background:'rgba(0,0,0,.55)',color:'#fff',border:'1.5px solid rgba(255,255,255,.4)',
+                    backdropFilter:'blur(4px)',WebkitTapHighlightColor:'transparent'}},
+                  '✂️ Recadrer')
+              )
             ),
 
       // ── Cropper modal ──

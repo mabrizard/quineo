@@ -994,6 +994,40 @@ function parseOcrToken(text) {
   return (isNaN(n) || n < 1 || n > 90) ? null : n;
 }
 
+// ── Recadrage automatique via Claude Vision ──────────────────────────────────
+// Envoie l'image à Claude qui retourne les coordonnées de la grille de jeu.
+// Retourne un canvas recadré sur la grille, ou le canvas original si échec.
+async function autoDetectAndCrop(canvas) {
+  try {
+    const b64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+    const res = await fetch('/api/vision', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ mode: 'detect', image: b64 })
+    });
+    if (!res.ok) return canvas; // silencieux : on garde l'original
+    const { box } = await res.json();
+    if (!box) return canvas;
+
+    // Recadrer le canvas sur la bounding box retournée par Claude
+    const W = canvas.width, H = canvas.height;
+    // Petite marge de sécurité de 1% pour ne pas couper les bords de la grille
+    const margin = 0.01;
+    const x = Math.max(0, Math.round((box.x - margin) * W));
+    const y = Math.max(0, Math.round((box.y - margin) * H));
+    const w = Math.min(W - x, Math.round((box.w + margin * 2) * W));
+    const h = Math.min(H - y, Math.round((box.h + margin * 2) * H));
+
+    const cropped = document.createElement('canvas');
+    cropped.width  = Math.max(1, w);
+    cropped.height = Math.max(1, h);
+    cropped.getContext('2d').drawImage(canvas, x, y, w, h, 0, 0, w, h);
+    return cropped;
+  } catch(_) {
+    return canvas; // en cas d'erreur, on garde l'original
+  }
+}
+
 // ── Pipeline scanCardVision ───────────────────────────────────────────────────
 //
 // Stratégie : NE PAS se fier aux coordonnées absolues (le header peut être
@@ -1012,6 +1046,11 @@ function parseOcrToken(text) {
 async function scanCardVision(cardCanvas) {
   const grid     = [Array(9).fill(null), Array(9).fill(null), Array(9).fill(null)];
   const usedNums = new Set();
+
+  // ── Étape 0 : recadrage automatique via Claude ────────────────────────────
+  // Sur les photos avec fond complexe, Claude détecte et isole la grille.
+  // Si la photo est déjà bien cadrée, le canvas retourné est quasi identique.
+  cardCanvas = await autoDetectAndCrop(cardCanvas);
 
   // ── Étape 1 : OCR document ────────────────────────────────────────────────
   const b64full = cardCanvas.toDataURL('image/jpeg', 0.92).split(',')[1];

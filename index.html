@@ -977,12 +977,14 @@ function extractCell(cardCanvas, row, col, rows=3, cols=9) {
   const useH = H - by - Math.round(H * 0.01);
   const cellW = useW / cols;
   const cellH = useH / rows;
-  // Padding interieur pour eviter les traits de grille
-  const px = cellW * 0.12;
-  const py = cellH * 0.12;
-  const x = Math.round(bx + col * cellW + px);
+  // Padding intérieur : gauche/haut/bas = 8% pour éviter les traits de grille
+  // Droite = 2% seulement pour ne pas couper les chiffres larges (10, 80, 90...)
+  const pLeft  = cellW * 0.08;
+  const pRight = cellW * 0.02;
+  const py     = cellH * 0.08;
+  const x = Math.round(bx + col * cellW + pLeft);
   const y = Math.round(by + row * cellH + py);
-  const w = Math.round(cellW - px * 2);
+  const w = Math.round(cellW - pLeft - pRight);
   const h = Math.round(cellH - py * 2);
   const cv = document.createElement('canvas');
   cv.width  = Math.max(w, 1);
@@ -1095,6 +1097,18 @@ async function scanCardVision(cardCanvas) {
     const heights = validWords.map(w => w.h).sort((a,b) => a-b);
     medianH = heights[Math.floor(heights.length / 2)];
   }
+  // Estimer la zone grille : ignorer les mots dans le header/footer
+  // On prend la plage Y des mots valides de taille normale et on exclut
+  // ceux qui sont trop hauts (header) ou trop bas (footer/pub)
+  const normalWords = validWords.filter(w => medianH === 0 || w.h >= medianH * 0.40);
+  const normalYs = normalWords.map(w => w.y + w.h);
+  const minY = normalYs.length ? Math.min(...normalYs) : 0;
+  const maxY = normalYs.length ? Math.max(...normalYs) : 1;
+  const rangeY = maxY - minY || 1;
+  // Marge de 15% au-dessus du premier mot et en dessous du dernier
+  const yLow  = minY - rangeY * 0.15;
+  const yHigh = maxY + rangeY * 0.15;
+
   const candidates = [];
   for (const word of validWords) {
     const n = parseOcrToken(word.text);
@@ -1103,6 +1117,8 @@ async function scanCardVision(cardCanvas) {
     if (medianH > 0 && word.h < medianH * 0.40) continue;
     // Bas du mot : stable même avec cercles colorés au-dessus
     const cy = word.y + word.h;
+    // Ignorer les mots hors de la zone grille estimée
+    if (cy < yLow || cy > yHigh) continue;
     candidates.push({ n, cy, col: numToCol(n) });
   }
 

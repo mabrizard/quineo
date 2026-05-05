@@ -1087,11 +1087,22 @@ async function scanCardVision(cardCanvas) {
   const { words } = await resDoc.json();
 
   // ── Étape 2 : filtrer les mots valides ───────────────────────────────────
+  // Calcul de la hauteur médiane des mots valides pour éliminer
+  // les petits numéros répétés en bas de cellule (cartons à doubles numéros)
+  const validWords = (words || []).filter(w => parseOcrToken(w.text) !== null);
+  let medianH = 0;
+  if (validWords.length > 0) {
+    const heights = validWords.map(w => w.h).sort((a,b) => a-b);
+    medianH = heights[Math.floor(heights.length / 2)];
+  }
   const candidates = [];
-  for (const word of (words || [])) {
+  for (const word of validWords) {
     const n = parseOcrToken(word.text);
     if (!n) continue;
-    const cy = word.y + word.h; // bas du mot : stable meme avec cercles colores au-dessus
+    // Ignorer les mots trop petits = petits numéros répétés des cartons doubles
+    if (medianH > 0 && word.h < medianH * 0.40) continue;
+    // Bas du mot : stable même avec cercles colorés au-dessus
+    const cy = word.y + word.h;
     candidates.push({ n, cy, col: numToCol(n) });
   }
 

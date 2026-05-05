@@ -1031,7 +1031,7 @@ async function scanCardVision(cardCanvas) {
   for (const word of (words || [])) {
     const n = parseOcrToken(word.text);
     if (!n) continue;
-    const cy = word.y + word.h / 2;
+    const cy = word.y + word.h; // bas du mot : stable meme avec cercles colores au-dessus
     candidates.push({ n, cy, col: numToCol(n) });
   }
 
@@ -1385,7 +1385,7 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
                 );
                 return lines;
               })(),
-              React.createElement('div', {style:{position:'absolute',bottom:6,right:6,display:'flex',gap:5}},
+              React.createElement('div', {style:{position:'absolute',bottom:6,left:6,display:'flex',gap:5}},
                 ps > 1 && React.createElement('button', {
                   onClick:()=>setShowGrid(g=>!g),
                   title:'Vérifier le découpage',

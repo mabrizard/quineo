@@ -938,20 +938,31 @@ function detectHeaderHeight(cardCanvas) {
   const W = cardCanvas.width, H = cardCanvas.height;
   const ctx = cardCanvas.getContext('2d');
   const SLICE = Math.max(1, Math.round(H * 0.05));
-  const redFrac = (y0, y1) => {
+
+  // Mesure la fraction de pixels "contenu de grille" dans une tranche :
+  // rouge vif (cartons rouges), vert saturé (cartons verts), ou sombre (traits de grille)
+  const contentFrac = (y0, y1) => {
     const data = ctx.getImageData(0, y0, W, y1 - y0).data;
-    let red = 0;
-    for (let i = 0; i < data.length; i += 4)
-      if (data[i] > 150 && data[i+1] < 110 && data[i+2] < 110) red++;
-    return red / (W * (y1 - y0));
+    let hit = 0;
+    const total = W * (y1 - y0);
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i+1], b = data[i+2];
+      const isRed    = r > 150 && g < 110 && b < 110;           // rouge vif
+      const isGreen  = g > r + 30 && g > b + 20 && g > 80;     // vert saturé
+      const isDark   = r < 80 && g < 80 && b < 80;              // traits sombres
+      if (isRed || isGreen || isDark) hit++;
+    }
+    return hit / total;
   };
-  // Si la premiere tranche est deja rouge → pas de header
-  if (redFrac(0, SLICE) > 0.20) return 0;
-  // Sinon chercher ou commence le rouge (header blanc en haut)
-  for (let i = 1; i <= 5; i++) {
+
+  // Si la première tranche contient déjà du contenu → pas de header
+  if (contentFrac(0, SLICE) > 0.15) return 0;
+
+  // Sinon chercher où commence le contenu
+  for (let i = 1; i <= 6; i++) {
     const y0 = Math.round(H * i * 0.05);
     const y1 = Math.round(H * (i + 1) * 0.05);
-    if (redFrac(y0, y1) > 0.20) return y0;
+    if (contentFrac(y0, y1) > 0.15) return y0;
   }
   return Math.round(H * 0.18); // fallback
 }
@@ -986,10 +997,20 @@ function extractCell(cardCanvas, row, col, rows=3, cols=9) {
 function numToCol(n) { return n <= 9 ? 0 : n >= 80 ? 8 : Math.floor(n / 10); }
 
 // Nettoie token OCR → nombre 1-90 ou null
+// Gère les cartons à doubles numéros (grand + petit) où Vision peut lire "1010" ou "5252"
 function parseOcrToken(text) {
   if (!text) return null;
   const clean = text.replace(/[Oo]/g,'0').replace(/[Il]/g,'1').replace(/\D/g,'').trim();
   if (!clean) return null;
+  // Cas doublon : "1010"→10, "55"→5 (1 chiffre doublé), "8585"→85
+  // Si la chaîne est de longueur paire et la première moitié = la seconde → prendre la moitié
+  if (clean.length >= 2 && clean.length % 2 === 0) {
+    const half = clean.slice(0, clean.length / 2);
+    if (half === clean.slice(clean.length / 2)) {
+      const nh = parseInt(half, 10);
+      if (!isNaN(nh) && nh >= 1 && nh <= 90) return nh;
+    }
+  }
   const n = parseInt(clean, 10);
   return (isNaN(n) || n < 1 || n > 90) ? null : n;
 }

@@ -959,39 +959,114 @@ function extractCell(cardCanvas, row, col, rows=3, cols=9) {
   return cv;
 }
 
-// Send all 27 cells to Google Vision in one batch request
-async function scanCardVision(cardCanvas) {
-  // Build 27 cell images
-  const cells = [];
-  for (let r=0; r<3; r++)
-    for (let c=0; c<9; c++)
-      cells.push({ row:r, col:c, b64: extractCell(cardCanvas, r, c).toDataURL('image/jpeg', 0.92).split(',')[1] });
+// ── Utilitaires scan ─────────────────────────────────────────────────────────
 
-  const res = await fetch('/api/vision', {
+// Colonne attendue pour n (0-8)
+function numToCol(n) { return n <= 9 ? 0 : n >= 80 ? 8 : Math.floor(n / 10); }
+
+// Nettoie token OCR → nombre 1-90 ou null
+function parseOcrToken(text) {
+  if (!text) return null;
+  const clean = text.replace(/[Oo]/g,'0').replace(/[Il]/g,'1').replace(/\D/g,'').trim();
+  if (!clean) return null;
+  const n = parseInt(clean, 10);
+  return (isNaN(n) || n < 1 || n > 90) ? null : n;
+}
+
+// ── Pipeline hybride : document OCR → projection → OCR ciblé ─────────────────
+//
+// Étape 1 : envoie l'image carton entière en mode "document"
+//           → DOCUMENT_TEXT_DETECTION, mots avec coordonnées normalisées
+// Étape 2 : projette chaque mot sur la grille 3×9 (header ~18% ignoré)
+// Étape 3 : OCR cellules ciblées uniquement sur les cases encore vides
+// Étape 4 : validation métier colonne par colonne
+//
+async function scanCardVision(cardCanvas) {
+  const grid        = [Array(9).fill(null), Array(9).fill(null), Array(9).fill(null)];
+  const usedNums    = new Set();
+
+  // ── Étape 1 : OCR document sur l'image carton entière ────────────────────
+  const b64full = cardCanvas.toDataURL('image/jpeg', 0.92).split(',')[1];
+  const resDoc  = await fetch('/api/vision', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ cells })
+    body: JSON.stringify({ mode: 'document', image: b64full })
   });
-  if (!res.ok) {
-    const err = await res.json().catch(()=>({}));
-    throw new Error(err.error || `HTTP ${res.status}`);
+  if (!resDoc.ok) {
+    const err = await resDoc.json().catch(()=>({}));
+    throw new Error(err.error || `HTTP ${resDoc.status}`);
   }
-  const { results } = await res.json();
+  const { words } = await resDoc.json();
 
-  // results[i] = { row, col, text }
-  const grid = [Array(9).fill(null), Array(9).fill(null), Array(9).fill(null)];
-  for (const r of results) {
-    const clean = (r.text||'').replace(/\D/g,'').trim();
-    if (!clean) continue;
-    const n = parseInt(clean, 10);
-    if (isNaN(n) || n < 1 || n > 90) continue;
-    // Verify the number belongs to its expected column
-    const expectedCol = n <= 9 ? 0 : n >= 80 ? 8 : Math.floor(n/10);
-    if (expectedCol === r.col && grid[r.row][r.col] === null) {
-      grid[r.row][r.col] = n;
+  // ── Étape 2 : projection des mots sur la grille ──────────────────────────
+  // Zone grille : header ≈ top 18%, bords lat ≈ 1.5%
+  // Chaque cellule occupe 1/9 en x, 1/3 en y dans la zone grille
+  const HEADER_FRAC = 0.18;
+  const BX_FRAC     = 0.015;
+  const gridTop     = HEADER_FRAC;
+  const gridLeft    = BX_FRAC;
+  const gridW       = 1 - BX_FRAC * 2;
+  const gridH       = 1 - HEADER_FRAC - 0.01;
+
+  for (const word of (words || [])) {
+    // Centre du mot
+    const cx = word.x + word.w / 2;
+    const cy = word.y + word.h / 2;
+    if (cy < gridTop || cx < gridLeft || cx > 1 - BX_FRAC) continue;
+
+    const col = Math.floor((cx - gridLeft) / gridW * 9);
+    const row = Math.floor((cy - gridTop)  / gridH * 3);
+    if (col < 0 || col > 8 || row < 0 || row > 2) continue;
+
+    const n = parseOcrToken(word.text);
+    if (!n) continue;
+
+    // Validation métier : bonne colonne + pas de doublon
+    if (numToCol(n) !== col) continue;
+    if (usedNums.has(n)) continue;
+    if (grid[row][col] !== null) continue;
+
+    grid[row][col] = n;
+    usedNums.add(n);
+  }
+
+  // ── Étape 3 : OCR ciblé sur les cases encore vides ───────────────────────
+  const emptyCells = [];
+  for (let r = 0; r < 3; r++)
+    for (let c = 0; c < 9; c++)
+      if (grid[r][c] === null)
+        emptyCells.push({ row: r, col: c, b64: extractCell(cardCanvas, r, c).toDataURL('image/jpeg', 0.92).split(',')[1] });
+
+  if (emptyCells.length > 0) {
+    const resCells = await fetch('/api/vision', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ cells: emptyCells })
+    });
+    if (resCells.ok) {
+      const { results } = await resCells.json();
+      for (const r of (results || [])) {
+        if (grid[r.row][r.col] !== null) continue;   // déjà rempli
+        const n = r.n ?? parseOcrToken(r.text);
+        if (!n) continue;
+        if (numToCol(n) !== r.col) continue;          // mauvaise colonne
+        if (usedNums.has(n)) continue;                // doublon
+        grid[r.row][r.col] = n;
+        usedNums.add(n);
+      }
     }
   }
-  return grid; // Already in correct columns, no need for validateGrid column fix
+
+  // ── Étape 4 : contrainte lignes (max 5 numéros/ligne) ────────────────────
+  for (let r = 0; r < 3; r++) {
+    const filled = grid[r].map((v,c) => ({v,c})).filter(x => x.v !== null);
+    if (filled.length > 5) {
+      // Supprime les excédents (les dernières colonnes — cas rare)
+      filled.slice(5).forEach(({c}) => { usedNums.delete(grid[r][c]); grid[r][c] = null; });
+    }
+  }
+
+  return grid;
 }
 
 function ScannerModal({onSaveCards, onCancel, lm}) {

@@ -1880,11 +1880,23 @@ function App() {
   const upd = useCallback((id,fn)=>setGames(prev=>prev.map(g=>g.id===id?{...g,...fn(g)}:g)),[]);
 
   // Goal milestone detection — ne célèbre chaque objectif qu'une seule fois par partie
-  // goalSigRef = Set des clés "cardId:q/d/f" déjà célébrées (réinitialisé sur clearTokens)
+  // Initialisation : on pré-remplit le Set avec les objectifs déjà atteints sans célébrer
+  // Ainsi ni le premier render ni un clearTokens ne déclenchent de feux intempestifs
   useEffect(()=>{
-    if (goalSigRef.current === null) goalSigRef.current = new Set();
-    const celebrated = goalSigRef.current;
     const active=game.cards.filter(c=>c.category==="normal"||(c.category==="special"&&c.active));
+    // Premier appel ou après clearTokens : initialiser silencieusement
+    if (goalSigRef.current === null) {
+      const init = new Set();
+      active.forEach(c=>{
+        const s=cardStatus(c.grid,ds,"full");
+        if (s.goals.quine.won)  init.add(`${c.id}:q`);
+        if (s.goals.double.won) init.add(`${c.id}:d`);
+        if (s.goals.full.won)   init.add(`${c.id}:f`);
+      });
+      goalSigRef.current = init;
+      return;
+    }
+    const celebrated = goalSigRef.current;
     let celebrate = false;
     let maxWon = 0;
     active.forEach(c=>{
@@ -1900,7 +1912,6 @@ function App() {
       else if (maxWon===2) setMode("full");
     }
   },[ds,game.cards]);
-  // Toggle cell (global drawn toggle + flying ball)
   const toggleCell = useCallback((cardId, num)=>{
     upd(game.id, g=>{
       if (g.drawn.includes(num)) {

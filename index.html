@@ -1921,7 +1921,7 @@ function App() {
   const saveCard    = data=>{ upd(game.id,g=>({cards:g.cards.map(c=>c.id===editCard.id?{...c,...data}:c)})); setLastColor(data.color); setEditCard(null);setShowEditor(false); };
   const delCard     = id  =>{ upd(game.id,g=>({cards:g.cards.filter(c=>c.id!==id)})); setEditCard(null);setShowEditor(false); };
   const toggleActive= id =>  upd(game.id,g=>({cards:g.cards.map(c=>c.id===id?{...c,active:!c.active}:c)}));
-  const importScanned=sc =>{ const nc=sc.map((c,i)=>({id:uid(),grid:c.grid,color:CARD_COLORS[i%CARD_COLORS.length],label:c.label||`Scan ${i+1}`,category:"normal",active:true})); upd(game.id,g=>({cards:[...g.cards,...nc]})); setShowScanner(false); };
+  const importScanned=sc =>{ const nc=sc.map((c,i)=>({id:uid(),grid:c.grid,color:c.color||CARD_COLORS[i%CARD_COLORS.length],label:c.label||`Scan ${i+1}`,category:"normal",active:true})); upd(game.id,g=>({cards:[...g.cards,...nc]})); setShowScanner(false); };
   const newGame     = name=>{ const g=mkGame(name);setGames(p=>[...p,g]);setCurrentId(g.id);setWinnerIds(new Set()); };
   const delGame     = id  =>{ setGames(p=>{const ng=p.filter(g=>g.id!==id);if(currentId===id&&ng.length)setCurrentId(ng[0].id);return ng.length?ng:[mkGame("Soirée loto")];}); };
   const clearTokens = id  =>{ upd(id,()=>({drawn:[]}));setWinnerIds(new Set()); App._goalSig = null; };

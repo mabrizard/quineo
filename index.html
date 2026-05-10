@@ -1879,38 +1879,27 @@ function App() {
 
   const upd = useCallback((id,fn)=>setGames(prev=>prev.map(g=>g.id===id?{...g,...fn(g)}:g)),[]);
 
-  // Goal milestone detection (1 ligne, 2 lignes, carton plein)
+  // Goal milestone detection — ne célèbre chaque objectif qu'une seule fois par partie
+  // goalSigRef = Set des clés "cardId:q/d/f" déjà célébrées (réinitialisé sur clearTokens)
   useEffect(()=>{
+    if (goalSigRef.current === null) goalSigRef.current = new Set();
+    const celebrated = goalSigRef.current;
     const active=game.cards.filter(c=>c.category==="normal"||(c.category==="special"&&c.active));
-    const sig = active.map(c=>{ const s=cardStatus(c.grid,ds,"full"); return `${c.id}:${Number(s.goals.quine.won)}${Number(s.goals.double.won)}${Number(s.goals.full.won)}`; }).join("|");
-    if (goalSigRef.current === null) { goalSigRef.current = sig; return; }
-    const prevSig = goalSigRef.current;
-    if (prevSig === sig) return;
-    const prevParts = new Map(prevSig.split("|").filter(Boolean).map(x=>x.split(":")));
     let celebrate = false;
-    sig.split("|").filter(Boolean).forEach(part=>{
-      const [id,flags]=part.split(":");
-      const prev=prevParts.get(id)||"000";
-      if ((flags[0] > prev[0]) || (flags[1] > prev[1]) || (flags[2] > prev[2])) celebrate = true;
+    let maxWon = 0;
+    active.forEach(c=>{
+      const s=cardStatus(c.grid,ds,"full");
+      if (s.goals.quine.won)  { const k=`${c.id}:q`; if (!celebrated.has(k)) { celebrated.add(k); celebrate=true; maxWon=Math.max(maxWon,1); } }
+      if (s.goals.double.won) { const k=`${c.id}:d`; if (!celebrated.has(k)) { celebrated.add(k); celebrate=true; maxWon=Math.max(maxWon,2); } }
+      if (s.goals.full.won)   { const k=`${c.id}:f`; if (!celebrated.has(k)) { celebrated.add(k); celebrate=true; maxWon=Math.max(maxWon,3); } }
     });
-    goalSigRef.current = sig;
     if (celebrate) {
       setFireworks(true);
       setTimeout(()=>setFireworks(false),2200);
-      // Auto-advance mode to next unachieved milestone
-      // Find the highest milestone won by any card
-      let maxWon = 0; // 0=none, 1=quine, 2=double, 3=full
-      sig.split("|").filter(Boolean).forEach(part=>{
-        const flags = part.split(":")[1]||"000";
-        if (flags[2]==="1") maxWon = Math.max(maxWon, 3);
-        else if (flags[1]==="1") maxWon = Math.max(maxWon, 2);
-        else if (flags[0]==="1") maxWon = Math.max(maxWon, 1);
-      });
       if (maxWon===1) setMode("double");
       else if (maxWon===2) setMode("full");
     }
   },[ds,game.cards]);
-
   // Toggle cell (global drawn toggle + flying ball)
   const toggleCell = useCallback((cardId, num)=>{
     upd(game.id, g=>{

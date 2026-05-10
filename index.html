@@ -315,7 +315,7 @@ function CardGrid({grid, ds, cardColor, markerId, markerColor, fontSize=15, lm, 
                 style: {aspectRatio:"1",borderRadius:lm?4:6,display:"flex",alignItems:"center",justifyContent:"center",
                   background:bg,border:brd,color:col,fontFamily:"'Fredoka One',cursive",
                   fontSize:lm?fontSize+1:fontSize,fontWeight:900,lineHeight:1,
-                  boxShadow:shadow,transform:tf,transition:"all .18s",
+                  boxShadow:shadow,transform:tf,transition:"background .18s,border-color .18s,box-shadow .18s,color .18s",
                   position:"relative",overflow:"hidden",userSelect:"none",
                   cursor:empty?"default":"pointer",WebkitTapHighlightColor:"transparent"},}
                 , !empty&&React.createElement('span', { style: {position:"relative",zIndex:2,lineHeight:1,pointerEvents:"none"},}, cell)
@@ -1240,9 +1240,9 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
         done&&cards.length>0&&
           React.createElement('div', {style:{display:'flex',alignItems:'center',gap:8,flex:1}},
             React.createElement('div', {style:{width:20,height:20,borderRadius:'50%',
-              background:plateColor,border:'2px solid rgba(255,255,255,.4)',flexShrink:0}}),
+              background:plateColorRef.current,border:'2px solid rgba(255,255,255,.4)',flexShrink:0}}),
             React.createElement('button', {style:{...primaryBs,flex:1},
-              onClick:()=>{ const col=plateColor; onSaveCards(cards.map(c=>({...c,color:col}))); }},
+              onClick:()=>onSaveCards(cards.map(c=>({...c,color:plateColorRef.current})))},
               `✅ Importer ${cards.length} carton${cards.length>1?'s':''}`)
           )
       )
@@ -1867,6 +1867,7 @@ function App() {
   const [winnerIds,   setWinnerIds]   = useState(new Set());
   const [flyBall,     setFlyBall]     = useState(null);
   const [showMenu,    setShowMenu]    = useState(false);
+  const goalSigRef = useRef(null);
   const {confirm:showConfirm, Dialog:ConfirmDialog} = useConfirm();
   const [lastColor,   setLastColor]   = useState(_optionalChain([saved, 'optionalAccess', _24 => _24.lastColor])||CARD_COLORS[0]);
 
@@ -1882,8 +1883,8 @@ function App() {
   useEffect(()=>{
     const active=game.cards.filter(c=>c.category==="normal"||(c.category==="special"&&c.active));
     const sig = active.map(c=>{ const s=cardStatus(c.grid,ds,"full"); return `${c.id}:${Number(s.goals.quine.won)}${Number(s.goals.double.won)}${Number(s.goals.full.won)}`; }).join("|");
-    if (!App._goalSig) { App._goalSig = sig; return; }
-    const prevSig = App._goalSig;
+    if (goalSigRef.current === null) { goalSigRef.current = sig; return; }
+    const prevSig = goalSigRef.current;
     if (prevSig === sig) return;
     const prevParts = new Map(prevSig.split("|").filter(Boolean).map(x=>x.split(":")));
     let celebrate = false;
@@ -1892,7 +1893,7 @@ function App() {
       const prev=prevParts.get(id)||"000";
       if ((flags[0] > prev[0]) || (flags[1] > prev[1]) || (flags[2] > prev[2])) celebrate = true;
     });
-    App._goalSig = sig;
+    goalSigRef.current = sig;
     if (celebrate) {
       setFireworks(true);
       setTimeout(()=>setFireworks(false),2200);
@@ -1929,7 +1930,7 @@ function App() {
   const importScanned=sc =>{ const nc=sc.map((c,i)=>({id:uid(),grid:c.grid,color:c.color||CARD_COLORS[i%CARD_COLORS.length],label:c.label||`Scan ${i+1}`,category:"normal",active:true})); upd(game.id,g=>({cards:[...g.cards,...nc]})); setShowScanner(false); };
   const newGame     = name=>{ const g=mkGame(name);setGames(p=>[...p,g]);setCurrentId(g.id);setWinnerIds(new Set()); };
   const delGame     = id  =>{ setGames(p=>{const ng=p.filter(g=>g.id!==id);if(currentId===id&&ng.length)setCurrentId(ng[0].id);return ng.length?ng:[mkGame("Soirée loto")];}); };
-  const clearTokens = id  =>{ upd(id,()=>({drawn:[]}));setWinnerIds(new Set()); App._goalSig = null; };
+  const clearTokens = id  =>{ upd(id,()=>({drawn:[]}));setWinnerIds(new Set()); goalSigRef.current = null; };
   const saveSets    = s   =>{ setSettings(s);setShowSettings(false); };
   const activeCards = game.cards.filter(c=>c.category==="normal"||(c.category==="special"&&c.active));
 

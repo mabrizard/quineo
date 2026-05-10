@@ -989,7 +989,7 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
         c = validateCartonLoto(c);
         // Convertir rows → grid format QuineO
         const grid = c.rows;
-        return { id: i, validated: c.valid, label: '', grid, errors: c.errors, scanError: null };
+        return { id: i, validated: true, label: '', grid, errors: c.errors, scanError: null };
       });
       setCards(result);
       setDone(true); setAi(0);
@@ -1237,7 +1237,7 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
       // Boutons bas
       React.createElement('div', {style:{display:'flex',gap:8}},
         React.createElement('button', {style:ghostBs(lm), onClick:onCancel}, 'Annuler'),
-        done&&cards.length>0&&cards.every(c=>c.validated)&&
+        done&&cards.length>0&&
           React.createElement('button', {style:primaryBs,
             onClick:()=>onSaveCards(cards.map(c=>({...c,color:plateColorRef.current})))},
             `✅ Importer ${cards.length} carton${cards.length>1?'s':''}`)

@@ -827,7 +827,6 @@ function CardEditor({card, defaultColor, onSave, onCancel, onDelete, onPlay, lm}
 // ─── GOOGLE VISION SCANNER ─────────────────────────────────────
 // ─── GOOGLE VISION SCANNER ──────────────────────────────────────
 
-// Normalize image canvas (EXIF + portrait)
 function normalizeImageCanvas(arrayBuf, forcePortrait=true) {
   return new Promise(resolve => {
     let orientation = 1;
@@ -890,102 +889,44 @@ function normalizeImageCanvas(arrayBuf, forcePortrait=true) {
   });
 }
 
-// Disposition connue pour chaque taille de plaque [cols, rows]
-const PLATE_LAYOUTS = {
-  1:  [1, 1],
-  6:  [2, 3],
-  12: [3, 4],
-  18: [3, 6],
-  24: [4, 6],
-  36: [6, 6],
-};
-
-// Crop canvas into N card canvases, row-major order (left→right, top→bottom)
+// Crop canvas into N card canvases (column-major order)
 function cropCardCanvases(canvas, n) {
-  const [cols, rows] = PLATE_LAYOUTS[n] || [2, Math.ceil(n / 2)];
+  if (n === 1) {
+    const cv = document.createElement('canvas');
+    cv.width = canvas.width; cv.height = canvas.height;
+    cv.getContext('2d').drawImage(canvas, 0, 0);
+    return [cv];
+  }
+  const cols = 2, rows = Math.ceil(n / cols);
   const W = canvas.width, H = canvas.height;
-
-  // Marge extérieure (bords de la plaque)
-  const bx = Math.round(W * 0.012);
-  const by = Math.round(H * 0.012);
-  // Zone utile
-  const useW = W - bx * 2;
-  const useH = H - by * 2;
-  // Espacement inter-cartons (gouttière entre cartons)
-  const gapX = cols > 1 ? Math.round(useW * 0.012) : 0;
-  const gapY = rows > 1 ? Math.round(useH * 0.010) : 0;
-  // Taille d'un carton
-  const cardW = Math.round((useW - gapX * (cols - 1)) / cols);
-  const cardH = Math.round((useH - gapY * (rows - 1)) / rows);
-
+  const mx = Math.round(W * 0.008), my = Math.round(H * 0.008);
+  const cardW = Math.round((W - mx*2) / cols);
+  const cardH = Math.round((H - my*2) / rows);
   const crops = [];
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) {
-      if (crops.length >= n) break;
-      const x = bx + col * (cardW + gapX);
-      const y = by + row * (cardH + gapY);
+  for (let col=0; col<cols; col++) {
+    for (let row=0; row<rows; row++) {
       const cv = document.createElement('canvas');
       cv.width = cardW; cv.height = cardH;
-      cv.getContext('2d').drawImage(canvas, x, y, cardW, cardH, 0, 0, cardW, cardH);
+      cv.getContext('2d').drawImage(canvas, mx+col*cardW, my+row*cardH, cardW, cardH, 0, 0, cardW, cardH);
       crops.push(cv);
     }
   }
-  return crops;
-}
-
-// Detecte automatiquement la hauteur du header en mesurant les pixels rouges
-function detectHeaderHeight(cardCanvas) {
-  const W = cardCanvas.width, H = cardCanvas.height;
-  const ctx = cardCanvas.getContext('2d');
-  const SLICE = Math.max(1, Math.round(H * 0.05));
-
-  // Mesure la fraction de pixels "contenu de grille" dans une tranche :
-  // rouge vif (cartons rouges), vert saturé (cartons verts), ou sombre (traits de grille)
-  const contentFrac = (y0, y1) => {
-    const data = ctx.getImageData(0, y0, W, y1 - y0).data;
-    let hit = 0;
-    const total = W * (y1 - y0);
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i], g = data[i+1], b = data[i+2];
-      const isRed    = r > 150 && g < 110 && b < 110;           // rouge vif
-      const isGreen  = g > r + 30 && g > b + 20 && g > 80;     // vert saturé
-      const isDark   = r < 80 && g < 80 && b < 80;              // traits sombres
-      if (isRed || isGreen || isDark) hit++;
-    }
-    return hit / total;
-  };
-
-  // Si la première tranche contient déjà du contenu → pas de header
-  if (contentFrac(0, SLICE) > 0.15) return 0;
-
-  // Sinon chercher où commence le contenu
-  for (let i = 1; i <= 6; i++) {
-    const y0 = Math.round(H * i * 0.05);
-    const y1 = Math.round(H * (i + 1) * 0.05);
-    if (contentFrac(y0, y1) > 0.15) return y0;
-  }
-  return Math.round(H * 0.18); // fallback
+  return crops.slice(0, n);
 }
 
 // Extract one cell canvas from card canvas
 function extractCell(cardCanvas, row, col, rows=3, cols=9) {
   const W = cardCanvas.width, H = cardCanvas.height;
-  const headerH = detectHeaderHeight(cardCanvas);
-  const bx = Math.round(W * 0.015);
-  const by = headerH;
-  const useW = W - bx * 2;
-  const useH = H - by - Math.round(H * 0.01);
-  const cellW = useW / cols;
-  const cellH = useH / rows;
-  // Padding intérieur : gauche/haut/bas = 8% pour éviter les traits de grille
-  // Droite = 2% seulement pour ne pas couper les chiffres larges (10, 80, 90...)
-  const pLeft  = cellW * 0.08;
-  const pRight = cellW * 0.02;
-  const py     = cellH * 0.08;
-  const x = Math.round(bx + col * cellW + pLeft);
-  const y = Math.round(by + row * cellH + py);
-  const w = Math.round(cellW - pLeft - pRight);
-  const h = Math.round(cellH - py * 2);
+  // Small margin to avoid borders between cells
+  const mx = Math.round(W * 0.01), my = Math.round(H * 0.015);
+  const cellW = (W - mx*2) / cols;
+  const cellH = (H - my*2) / rows;
+  // Inner padding to focus on the number itself
+  const pad = 0.1;
+  const x = Math.round(mx + col*cellW + cellW*pad);
+  const y = Math.round(my + row*cellH + cellH*pad);
+  const w = Math.round(cellW * (1-pad*2));
+  const h = Math.round(cellH * (1-pad*2));
   const cv = document.createElement('canvas');
   cv.width  = Math.max(w, 1);
   cv.height = Math.max(h, 1);
@@ -993,210 +934,39 @@ function extractCell(cardCanvas, row, col, rows=3, cols=9) {
   return cv;
 }
 
-// ── Utilitaires scan ─────────────────────────────────────────────────────────
-
-// Colonne attendue pour n (0-8)
-function numToCol(n) { return n <= 9 ? 0 : n >= 80 ? 8 : Math.floor(n / 10); }
-
-// Nettoie token OCR → nombre 1-90 ou null
-// Gère les cartons à doubles numéros (grand + petit) où Vision peut lire "1010" ou "5252"
-function parseOcrToken(text) {
-  if (!text) return null;
-  const clean = text.replace(/[Oo]/g,'0').replace(/[Il]/g,'1').replace(/\D/g,'').trim();
-  if (!clean) return null;
-  // Cas doublon : "1010"→10, "55"→5 (1 chiffre doublé), "8585"→85
-  // Si la chaîne est de longueur paire et la première moitié = la seconde → prendre la moitié
-  if (clean.length >= 2 && clean.length % 2 === 0) {
-    const half = clean.slice(0, clean.length / 2);
-    if (half === clean.slice(clean.length / 2)) {
-      const nh = parseInt(half, 10);
-      if (!isNaN(nh) && nh >= 1 && nh <= 90) return nh;
-    }
-  }
-  const n = parseInt(clean, 10);
-  return (isNaN(n) || n < 1 || n > 90) ? null : n;
-}
-
-// ── Recadrage automatique via Claude Vision ──────────────────────────────────
-// Envoie l'image à Claude qui retourne les coordonnées de la grille de jeu.
-// Retourne un canvas recadré sur la grille, ou le canvas original si échec.
-async function autoDetectAndCrop(canvas) {
-  try {
-    const b64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
-    const res = await fetch('/api/vision', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ mode: 'detect', image: b64 })
-    });
-    if (!res.ok) return canvas; // silencieux : on garde l'original
-    const { box } = await res.json();
-    if (!box) return canvas;
-
-    // Recadrer le canvas sur la bounding box retournée par Claude
-    const W = canvas.width, H = canvas.height;
-    // Petite marge de sécurité de 1% pour ne pas couper les bords de la grille
-    const margin = 0.01;
-    const x = Math.max(0, Math.round((box.x - margin) * W));
-    const y = Math.max(0, Math.round((box.y - margin) * H));
-    const w = Math.min(W - x, Math.round((box.w + margin * 2) * W));
-    const h = Math.min(H - y, Math.round((box.h + margin * 2) * H));
-
-    const cropped = document.createElement('canvas');
-    cropped.width  = Math.max(1, w);
-    cropped.height = Math.max(1, h);
-    cropped.getContext('2d').drawImage(canvas, x, y, w, h, 0, 0, w, h);
-    return cropped;
-  } catch(_) {
-    return canvas; // en cas d'erreur, on garde l'original
-  }
-}
-
-// ── Pipeline scanCardVision ───────────────────────────────────────────────────
-//
-// Stratégie : NE PAS se fier aux coordonnées absolues (le header peut être
-// absent, le carton rogné, l'image de taille variable).
-//
-// Étape 1 : OCR image complète → DOCUMENT_TEXT_DETECTION → liste de mots
-// Étape 2 : garder uniquement les mots qui sont des nombres 1-90 valides
-// Étape 3 : la COLONNE vient de la valeur (numToCol) — pas des coordonnées X
-// Étape 4 : la LIGNE est déterminée par clustering Y adaptatif
-//           → on trie les candidats par Y croissant
-//           → on détecte 3 groupes en cherchant les 2 plus grands sauts de Y
-//           → le groupe 0 = ligne 0, groupe 1 = ligne 1, groupe 2 = ligne 2
-// Étape 5 : si < 12 candidats placés, OCR cellules sur les cases vides
-// Étape 6 : validation finale (max 5/ligne, pas de doublon, bonne colonne)
-//
+// Send all 27 cells to Google Vision in one batch request
 async function scanCardVision(cardCanvas) {
-  const grid     = [Array(9).fill(null), Array(9).fill(null), Array(9).fill(null)];
-  const usedNums = new Set();
+  // Build 27 cell images
+  const cells = [];
+  for (let r=0; r<3; r++)
+    for (let c=0; c<9; c++)
+      cells.push({ row:r, col:c, b64: extractCell(cardCanvas, r, c).toDataURL('image/jpeg', 0.92).split(',')[1] });
 
-  // ── Étape 0 : recadrage automatique via Claude ────────────────────────────
-  // Sur les photos avec fond complexe, Claude détecte et isole la grille.
-  // Si la photo est déjà bien cadrée, le canvas retourné est quasi identique.
-  cardCanvas = await autoDetectAndCrop(cardCanvas);
-
-  // ── Étape 1 : OCR document ────────────────────────────────────────────────
-  const b64full = cardCanvas.toDataURL('image/jpeg', 0.92).split(',')[1];
-  const resDoc  = await fetch('/api/vision', {
+  const res = await fetch('/api/vision', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ mode: 'document', image: b64full })
+    body: JSON.stringify({ cells })
   });
-  if (!resDoc.ok) {
-    const err = await resDoc.json().catch(()=>({}));
-    throw new Error(err.error || `HTTP ${resDoc.status}`);
+  if (!res.ok) {
+    const err = await res.json().catch(()=>({}));
+    throw new Error(err.error || `HTTP ${res.status}`);
   }
-  const { words } = await resDoc.json();
+  const { results } = await res.json();
 
-  // ── Étape 2 : filtrer les mots valides ───────────────────────────────────
-  // Calcul de la hauteur médiane des mots valides pour éliminer
-  // les petits numéros répétés en bas de cellule (cartons à doubles numéros)
-  const validWords = (words || []).filter(w => parseOcrToken(w.text) !== null);
-  let medianH = 0;
-  if (validWords.length > 0) {
-    const heights = validWords.map(w => w.h).sort((a,b) => a-b);
-    medianH = heights[Math.floor(heights.length / 2)];
-  }
-  // Estimer la zone grille : ignorer les mots dans le header/footer
-  // On prend la plage Y des mots valides de taille normale et on exclut
-  // ceux qui sont trop hauts (header) ou trop bas (footer/pub)
-  const normalWords = validWords.filter(w => medianH === 0 || w.h >= medianH * 0.40);
-  const normalYs = normalWords.map(w => w.y + w.h);
-  const minY = normalYs.length ? Math.min(...normalYs) : 0;
-  const maxY = normalYs.length ? Math.max(...normalYs) : 1;
-  const rangeY = maxY - minY || 1;
-  // Marge de 15% au-dessus du premier mot et en dessous du dernier
-  const yLow  = minY - rangeY * 0.15;
-  const yHigh = maxY + rangeY * 0.15;
-
-  const candidates = [];
-  for (const word of validWords) {
-    const n = parseOcrToken(word.text);
-    if (!n) continue;
-    // Ignorer les mots trop petits = petits numéros répétés des cartons doubles
-    if (medianH > 0 && word.h < medianH * 0.40) continue;
-    // Bas du mot : stable même avec cercles colorés au-dessus
-    const cy = word.y + word.h;
-    // Ignorer les mots hors de la zone grille estimée
-    if (cy < yLow || cy > yHigh) continue;
-    candidates.push({ n, cy, col: numToCol(n) });
-  }
-
-  // ── Étape 3+4 : clustering Y adaptatif → 3 lignes ────────────────────────
-  if (candidates.length >= 2) {
-    // Trier par Y croissant
-    candidates.sort((a, b) => a.cy - b.cy);
-
-    // Trouver les 2 plus grands sauts de Y consécutifs → 3 groupes
-    const gaps = [];
-    for (let i = 1; i < candidates.length; i++) {
-      gaps.push({ idx: i, gap: candidates[i].cy - candidates[i-1].cy });
-    }
-    gaps.sort((a, b) => b.gap - a.gap);
-
-    // Les 2 plus grands sauts délimitent les 3 lignes
-    // (si < 3 groupes détectables, on fait au mieux)
-    const splitIdxs = gaps.slice(0, 2).map(g => g.idx).sort((a,b) => a-b);
-
-    const assignRow = (i) => {
-      if (splitIdxs.length === 0) return 0;
-      if (splitIdxs.length === 1) return i < splitIdxs[0] ? 0 : 1;
-      if (i < splitIdxs[0]) return 0;
-      if (i < splitIdxs[1]) return 1;
-      return 2;
-    };
-
-    for (let i = 0; i < candidates.length; i++) {
-      const { n, col } = candidates[i];
-      const row = assignRow(i);
-      if (row > 2) continue;
-      if (usedNums.has(n)) continue;
-      if (grid[row][col] !== null) continue;
-      grid[row][col] = n;
-      usedNums.add(n);
+  // results[i] = { row, col, text }
+  const grid = [Array(9).fill(null), Array(9).fill(null), Array(9).fill(null)];
+  for (const r of results) {
+    const clean = (r.text||'').replace(/\D/g,'').trim();
+    if (!clean) continue;
+    const n = parseInt(clean, 10);
+    if (isNaN(n) || n < 1 || n > 90) continue;
+    // Verify the number belongs to its expected column
+    const expectedCol = n <= 9 ? 0 : n >= 80 ? 8 : Math.floor(n/10);
+    if (expectedCol === r.col && grid[r.row][r.col] === null) {
+      grid[r.row][r.col] = n;
     }
   }
-
-  // ── Étape 5 : OCR cellules ciblées sur les cases encore vides ────────────
-  const placed = grid.flat().filter(v => v !== null).length;
-  // On tente le fallback cellules si on a moins de 12 numéros (15 attendus)
-  if (placed < 12) {
-    const emptyCells = [];
-    for (let r = 0; r < 3; r++)
-      for (let c = 0; c < 9; c++)
-        if (grid[r][c] === null)
-          emptyCells.push({ row: r, col: c,
-            b64: extractCell(cardCanvas, r, c).toDataURL('image/jpeg', 0.92).split(',')[1] });
-
-    if (emptyCells.length > 0) {
-      const resCells = await fetch('/api/vision', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ cells: emptyCells })
-      });
-      if (resCells.ok) {
-        const { results } = await resCells.json();
-        for (const r of (results || [])) {
-          if (grid[r.row][r.col] !== null) continue;
-          const n = r.n ?? parseOcrToken(r.text);
-          if (!n) continue;
-          if (numToCol(n) !== r.col) continue;
-          if (usedNums.has(n)) continue;
-          grid[r.row][r.col] = n;
-          usedNums.add(n);
-        }
-      }
-    }
-  }
-
-  // ── Étape 6 : contrainte max 5 numéros/ligne ──────────────────────────────
-  for (let r = 0; r < 3; r++) {
-    const filled = grid[r].map((v,c) => ({v,c})).filter(x => x.v !== null);
-    if (filled.length > 5)
-      filled.slice(5).forEach(({c}) => { usedNums.delete(grid[r][c]); grid[r][c] = null; });
-  }
-
-  return grid;
+  return grid; // Already in correct columns, no need for validateGrid column fix
 }
 
 function ScannerModal({onSaveCards, onCancel, lm}) {
@@ -1216,7 +986,6 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
   const [cropIdx,    setCropIdx]    = useState(null); // index of image being cropped
   const [cropBox,    setCropBox]    = useState(null); // {x,y,w,h} in % of display
   const [cropDrag,   setCropDrag]   = useState(null); // drag start info
-  const [showGrid,   setShowGrid]   = useState(false); // show cut grid overlay
   const cropImgRef = useRef();
   const fRef = useRef(), cRef = useRef();
   const needMulti = ps >= 18;
@@ -1373,37 +1142,24 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
         )
       ),
 
-      // Couleur plaque — mise en avant, choix obligatoire avant scan
-      React.createElement('div', {style:{
-        marginBottom:12,
-        padding:'10px 12px',
-        borderRadius:12,
-        background: lm ? '#fafafa' : 'rgba(255,255,255,.04)',
-        border:`2px solid ${plateColor}44`,
-      }},
+      // Couleur plaque
+      React.createElement('div', {style:{marginBottom:10}},
         React.createElement('div', {style:{fontSize:9,fontWeight:700,letterSpacing:1.5,
-          textTransform:'uppercase',color:lm?'#9ca3af':'rgba(255,255,255,.4)',marginBottom:8}},
-          '🎨 Couleur de ce lot de cartons'),
-        React.createElement('div', {style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
+          textTransform:'uppercase',color:lm?'#9ca3af':'rgba(255,255,255,.4)',marginBottom:5}},
+          'Couleur des cartons'),
+        React.createElement('div', {style:{display:'flex',gap:7,flexWrap:'wrap',alignItems:'center'}},
           CARD_COLORS.map(c =>
             React.createElement('button', {key:c, onClick:()=>setPlateColor(c),
-              style:{width:32,height:32,borderRadius:'50%',background:c,cursor:'pointer',
+              style:{width:28,height:28,borderRadius:'50%',background:c,cursor:'pointer',
                 border:`3px solid ${plateColor===c?'#fff':'transparent'}`,
-                boxShadow:plateColor===c?`0 0 0 3px ${c}, 0 0 0 5px ${c}44`:'none',
-                transform:plateColor===c?'scale(1.25)':'scale(1)',
+                boxShadow:plateColor===c?`0 0 0 2px ${c}`:'none',
+                transform:plateColor===c?'scale(1.2)':'scale(1)',
                 transition:'all .15s',WebkitTapHighlightColor:'transparent'}})
           ),
           React.createElement('input', {type:'color', value:plateColor,
             onChange:e=>setPlateColor(e.target.value),
-            style:{width:32,height:32,borderRadius:'50%',
+            style:{width:28,height:28,borderRadius:'50%',
               border:`2px solid ${lm?'#e5e7eb':'rgba(255,255,255,.2)'}`,padding:0,cursor:'pointer'}})
-        ),
-        React.createElement('div', {style:{marginTop:8,display:'flex',alignItems:'center',gap:8}},
-          React.createElement('div', {style:{
-            width:20,height:20,borderRadius:4,background:plateColor,
-            flexShrink:0,border:`1px solid rgba(0,0,0,.15)`}}),
-          React.createElement('span', {style:{fontSize:11,color:lm?'#6b7280':'rgba(255,255,255,.45)',fontWeight:600}},
-            `Tous les cartons de ce scan auront cette couleur`)
         )
       ),
 
@@ -1454,41 +1210,14 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
               React.createElement('img', {src:images[0].url, alt:'',
                 style:{width:'100%',maxHeight:150,objectFit:'contain',borderRadius:8,
                   border:`1px solid ${lm?'#e5e7eb':'rgba(255,255,255,.1)'}`}}),
-              // Overlay grille de découpe
-              showGrid && ps > 1 && (() => {
-                const [cols, rows] = PLATE_LAYOUTS[ps] || [2, Math.ceil(ps/2)];
-                const lines = [];
-                for (let c=1; c<cols; c++) lines.push(
-                  React.createElement('div', {key:`v${c}`, style:{
-                    position:'absolute', top:'1.2%', bottom:'1.2%',
-                    left:`${1.2 + c*(100-2.4)/cols}%`, width:2,
-                    background:'rgba(245,197,24,.85)', pointerEvents:'none'}})
-                );
-                for (let r=1; r<rows; r++) lines.push(
-                  React.createElement('div', {key:`h${r}`, style:{
-                    position:'absolute', left:'1.2%', right:'1.2%',
-                    top:`${1.2 + r*(100-2.4)/rows}%`, height:2,
-                    background:'rgba(245,197,24,.85)', pointerEvents:'none'}})
-                );
-                return lines;
-              })(),
-              React.createElement('div', {style:{position:'absolute',bottom:6,left:6,display:'flex',gap:5}},
-                ps > 1 && React.createElement('button', {
-                  onClick:()=>setShowGrid(g=>!g),
-                  title:'Vérifier le découpage',
-                  style:{padding:'5px 10px',borderRadius:7,cursor:'pointer',fontSize:11,fontWeight:700,
-                    background:showGrid?'rgba(245,197,24,.9)':'rgba(0,0,0,.55)',
-                    color:showGrid?'#000':'#fff',border:`1.5px solid ${showGrid?'#f5c518':'rgba(255,255,255,.4)'}`,
-                    backdropFilter:'blur(4px)',WebkitTapHighlightColor:'transparent'}},
-                  showGrid ? '✓ Grille OK' : '📐 Vérifier'),
-                React.createElement('button', {
-                  onClick:()=>{setCropIdx(0);setCropBox(null);setShowGrid(false);},
-                  title:'Recadrer',
-                  style:{padding:'5px 10px',borderRadius:7,cursor:'pointer',fontSize:12,fontWeight:700,
-                    background:'rgba(0,0,0,.55)',color:'#fff',border:'1.5px solid rgba(255,255,255,.4)',
-                    backdropFilter:'blur(4px)',WebkitTapHighlightColor:'transparent'}},
-                  '✂️ Recadrer')
-              )
+              React.createElement('button', {
+                onClick:()=>{setCropIdx(0);setCropBox(null);},
+                title:'Recadrer',
+                style:{position:'absolute',bottom:6,right:6,padding:'5px 10px',
+                  borderRadius:7,cursor:'pointer',fontSize:12,fontWeight:700,
+                  background:'rgba(0,0,0,.55)',color:'#fff',border:'1.5px solid rgba(255,255,255,.4)',
+                  backdropFilter:'blur(4px)',WebkitTapHighlightColor:'transparent'}},
+                '✂️ Recadrer')
             ),
 
       // ── Cropper modal ──

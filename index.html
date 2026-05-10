@@ -1238,9 +1238,13 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
       React.createElement('div', {style:{display:'flex',gap:8}},
         React.createElement('button', {style:ghostBs(lm), onClick:onCancel}, 'Annuler'),
         done&&cards.length>0&&
-          React.createElement('button', {style:primaryBs,
-            onClick:()=>onSaveCards(cards.map(c=>({...c,color:plateColorRef.current})))},
-            `✅ Importer ${cards.length} carton${cards.length>1?'s':''}`)
+          React.createElement('div', {style:{display:'flex',alignItems:'center',gap:8,flex:1}},
+            React.createElement('div', {style:{width:20,height:20,borderRadius:'50%',
+              background:plateColor,border:'2px solid rgba(255,255,255,.4)',flexShrink:0}}),
+            React.createElement('button', {style:{...primaryBs,flex:1},
+              onClick:()=>{ const col=plateColor; onSaveCards(cards.map(c=>({...c,color:col}))); }},
+              `✅ Importer ${cards.length} carton${cards.length>1?'s':''}`)
+          )
       )
     )
   );

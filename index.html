@@ -960,6 +960,7 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
   const [previewUrl,  setPreviewUrl]  = useState(null);
   const [ps,          setPs]          = useState(1);
   const [plateColor,  setPlateColor]  = useState(CARD_COLORS[0]);
+  const plateColorRef = useRef(CARD_COLORS[0]);
   const [cards,       setCards]       = useState([]);
   const [scanning,    setScanning]    = useState(false);
   const [done,        setDone]        = useState(false);
@@ -1058,7 +1059,7 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
           'Couleur des cartons'),
         React.createElement('div', {style:{display:'flex',gap:7,flexWrap:'wrap',alignItems:'center'}},
           CARD_COLORS.map(c =>
-            React.createElement('button', {key:c, onClick:()=>setPlateColor(c),
+            React.createElement('button', {key:c, onClick:()=>{setPlateColor(c);plateColorRef.current=c;},
               style:{width:28,height:28,borderRadius:'50%',background:c,cursor:'pointer',
                 border:`3px solid ${plateColor===c?'#fff':'transparent'}`,
                 boxShadow:plateColor===c?`0 0 0 2px ${c}`:'none',
@@ -1066,7 +1067,7 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
                 transition:'all .15s',WebkitTapHighlightColor:'transparent'}})
           ),
           React.createElement('input', {type:'color', value:plateColor,
-            onChange:e=>setPlateColor(e.target.value),
+            onChange:e=>{setPlateColor(e.target.value);plateColorRef.current=e.target.value;},
             style:{width:28,height:28,borderRadius:'50%',
               border:`2px solid ${lm?'#e5e7eb':'rgba(255,255,255,.2)'}`,padding:0,cursor:'pointer'}})
         )
@@ -1238,7 +1239,7 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
         React.createElement('button', {style:ghostBs(lm), onClick:onCancel}, 'Annuler'),
         done&&cards.length>0&&cards.every(c=>c.validated)&&
           React.createElement('button', {style:primaryBs,
-            onClick:()=>onSaveCards(cards.map(c=>({...c,color:plateColor})))},
+            onClick:()=>onSaveCards(cards.map(c=>({...c,color:plateColorRef.current})))},
             `✅ Importer ${cards.length} carton${cards.length>1?'s':''}`)
       )
     )

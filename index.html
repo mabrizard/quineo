@@ -354,8 +354,8 @@ function LotoCard({card, ds, mode, onToggleActive, onEdit, markerId, markerColor
         , React.createElement('div', { style: {background:headerBg,padding:"3px 6px",display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:3},}
           , React.createElement('span', { style: {fontFamily:"'Fredoka One',cursive",fontSize:9,color:headerTxt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"45%"},}, label)
           , !st.won&&(()=>{
-              const g = !st.goals.quine.won ? st.goals.quine : !st.goals.double.won ? st.goals.double : st.goals.full;
-              const gl = !st.goals.quine.won ? "1L" : !st.goals.double.won ? "2L" : "Plein";
+              const g = mode==="quine" ? st.goals.quine : mode==="double" ? st.goals.double : st.goals.full;
+              const gl = mode==="quine" ? "1L" : mode==="double" ? "2L" : "Plein";
               return React.createElement('span', { style: {fontFamily:"'Fredoka One',cursive",fontSize:8,
                   color:g.alert?"#fbbf24":"rgba(255,255,255,.85)",textAlign:"right",lineHeight:1.3,flexShrink:0}},
                 g.alert?"⚠️ ":"", gl,": ",g.missing," rest."
@@ -399,9 +399,9 @@ function LotoCard({card, ds, mode, onToggleActive, onEdit, markerId, markerColor
         )
         , React.createElement('div', { style: {display:"flex",alignItems:"center",gap:5,flexShrink:0},}
           , !st.won&&(()=>{
-              // Trouver le prochain objectif non atteint
-              const g = !st.goals.quine.won ? st.goals.quine : !st.goals.double.won ? st.goals.double : st.goals.full;
-              const goalLabel = !st.goals.quine.won ? "1 ligne" : !st.goals.double.won ? "2 lignes" : "Plein";
+              // Objectif selon le mode courant
+              const g = mode==="quine" ? st.goals.quine : mode==="double" ? st.goals.double : st.goals.full;
+              const goalLabel = mode==="quine" ? "1 ligne" : mode==="double" ? "2 lignes" : "Plein";
               return React.createElement('span', { style: {display:"flex",flexDirection:"column",alignItems:"flex-end",gap:1,padding:"2px 7px",borderRadius:6,
                 background:"rgba(0,0,0,.2)",flexShrink:0},}
                 , g.missing>0&&React.createElement('span', { style: {fontFamily:"'Fredoka One',cursive",fontSize:12,

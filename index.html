@@ -1992,28 +1992,41 @@ function App() {
     if (prevSig === null) { prevSigRef.current = sig; return; }
     if (prevSig === sig) return;
 
-    // Détecter si un nouveau milestone a été atteint
+    // Détecter si le mode doit changer (premier carton à atteindre cet objectif)
+    // On ne célèbre QUE quand le mode global change, pas pour chaque carton supplémentaire
     const prevParts = new Map(prevSig.split("|").filter(Boolean).map(x=>{const [a,b]=x.split(":");return [a,b||"000"];}));
-    let newMilestone = 0; // 1=quine, 2=double, 3=full
+
+    // Compter combien de cartons avaient déjà atteint chaque objectif avant
+    let prevQuineCount=0, prevDoubleCount=0, prevFullCount=0;
+    let newQuineCount=0,  newDoubleCount=0,  newFullCount=0;
+
     sig.split("|").filter(Boolean).forEach(part=>{
-      const [id, flags] = part.split(":");
-      const prev = prevParts.get(id)||"000";
-      if (flags[0] > prev[0]) newMilestone = Math.max(newMilestone, 1);
-      if (flags[1] > prev[1]) newMilestone = Math.max(newMilestone, 2);
-      if (flags[2] > prev[2]) newMilestone = Math.max(newMilestone, 3);
+      const flags = part.split(":")[1]||"000";
+      if(flags[0]==="1") newQuineCount++;
+      if(flags[1]==="1") newDoubleCount++;
+      if(flags[2]==="1") newFullCount++;
+    });
+    prevParts.forEach(flags=>{
+      if(flags[0]==="1") prevQuineCount++;
+      if(flags[1]==="1") prevDoubleCount++;
+      if(flags[2]==="1") prevFullCount++;
     });
 
     prevSigRef.current = sig;
 
-    if (newMilestone > 0) {
-      // Feux d'artifice
+    // Célébrer uniquement quand le PREMIER carton atteint un objectif (compte passe de 0 à 1)
+    const firstQuine  = prevQuineCount  === 0 && newQuineCount  > 0;
+    const firstDouble = prevDoubleCount === 0 && newDoubleCount > 0;
+    const firstFull   = prevFullCount   === 0 && newFullCount   > 0;
+
+    if (firstQuine || firstDouble || firstFull) {
       setFireworks(true);
       setTimeout(()=>setFireworks(false), 2500);
 
-      // Progression du mode : on avance au milestone suivant
       setMode(prev=>{
-        if (newMilestone >= 2 && prev !== "full")  return "full";
-        if (newMilestone >= 1 && prev === "quine") return "double";
+        if (firstFull)   return "full";
+        if (firstDouble && prev !== "full") return "full";
+        if (firstQuine  && prev === "quine") return "double";
         return prev;
       });
     }
@@ -2035,7 +2048,7 @@ function App() {
   const saveCard    = data=>{ upd(game.id,g=>({cards:g.cards.map(c=>c.id===editCard.id?{...c,...data}:c)})); setLastColor(data.color); setEditCard(null);setShowEditor(false); };
   const delCard     = id  =>{ upd(game.id,g=>({cards:g.cards.filter(c=>c.id!==id)})); setEditCard(null);setShowEditor(false); };
   const toggleActive= id =>  upd(game.id,g=>({cards:g.cards.map(c=>c.id===id?{...c,active:!c.active}:c)}));
-  const importScanned=sc =>{ const nc=sc.map((c,i)=>({id:uid(),grid:c.grid,color:CARD_COLORS[i%CARD_COLORS.length],label:c.label||`Scan ${i+1}`,category:"normal",active:true})); upd(game.id,g=>({cards:[...g.cards,...nc]})); setShowScanner(false); };
+  const importScanned=sc =>{ const nc=sc.map((c,i)=>({id:uid(),grid:c.grid,color:c.color||CARD_COLORS[i%CARD_COLORS.length],label:c.label||`Scan ${i+1}`,category:"normal",active:true})); upd(game.id,g=>({cards:[...g.cards,...nc]})); setShowScanner(false); };
   const newGame     = name=>{ const g=mkGame(name);setGames(p=>[...p,g]);setCurrentId(g.id);setWinnerIds(new Set()); };
   const delGame     = id  =>{ setGames(p=>{const ng=p.filter(g=>g.id!==id);if(currentId===id&&ng.length)setCurrentId(ng[0].id);return ng.length?ng:[mkGame("Soirée loto")];}); };
   const clearTokens = id  =>{ upd(id,()=>({drawn:[]}));setWinnerIds(new Set()); prevSigRef.current=null; };

@@ -824,268 +824,176 @@ function CardEditor({card, defaultColor, onSave, onCancel, onDelete, onPlay, lm}
 // ─── SCANNER MODAL ───────────────────────────────────────────────
 
 
-// ─── GOOGLE VISION SCANNER ─────────────────────────────────────
-// ─── GOOGLE VISION SCANNER ──────────────────────────────────────
 
-// Normalize image canvas (EXIF + portrait)
-function normalizeImageCanvas(arrayBuf, forcePortrait=true) {
-  return new Promise(resolve => {
-    let orientation = 1;
-    try {
-      const view = new DataView(arrayBuf);
-      if (view.getUint16(0,false) === 0xFFD8) {
-        let off = 2;
-        while (off < view.byteLength) {
-          if (view.getUint16(off,false) === 0xFFE1) {
-            if (view.getUint32(off+4,false) === 0x45786966) {
-              const little = view.getUint16(off+10,false) === 0x4949;
-              const tags = view.getUint16(off+14,little);
-              for (let i=0;i<tags;i++) {
-                if (view.getUint16(off+16+i*12,little) === 0x0112) {
-                  orientation = view.getUint16(off+16+i*12+8,little); break;
-                }
-              }
-            }
-            break;
-          }
-          off += 2+view.getUint16(off+2,false);
-        }
-      }
-    } catch(_) {}
+// ─── SCANNER CLAUDE ──────────────────────────────────────────────
+// Utilise Claude Vision via /api/claude (proxy Vercel)
+// Prompt identique à loto-scanner standalone qui fonctionne
+// buildGridFromLines + validateCarton repris de loto-scanner
 
-    const blob = new Blob([arrayBuf]);
-    const url  = URL.createObjectURL(blob);
-    const img  = new Image();
+const COL_RANGES = [[1,9],[10,19],[20,29],[30,39],[40,49],[50,59],[60,69],[70,79],[80,90]];
+
+function getCol(num) {
+  for (let i = 0; i < COL_RANGES.length; i++) {
+    if (num >= COL_RANGES[i][0] && num <= COL_RANGES[i][1]) return i;
+  }
+  return -1;
+}
+
+function buildGridFromLines(carton) {
+  const rows = [
+    [null,null,null,null,null,null,null,null,null],
+    [null,null,null,null,null,null,null,null,null],
+    [null,null,null,null,null,null,null,null,null]
+  ];
+  const errors = [], allNums = [];
+  const lines = [carton.line1||[], carton.line2||[], carton.line3||[]];
+  lines.forEach((line, ri) => {
+    if (line.length !== 5) errors.push(`Ligne ${ri+1} : ${line.length} numéros lus (attendu 5)`);
+    line.forEach(num => {
+      if (num < 1 || num > 90) { errors.push(`Numéro invalide : ${num}`); return; }
+      if (allNums.includes(num)) { errors.push(`Doublon : ${num}`); return; }
+      allNums.push(num);
+      const col = getCol(num);
+      if (col < 0) { errors.push(`Hors plage : ${num}`); return; }
+      if (rows[ri][col] !== null) {
+        errors.push(`Collision col ${col+1} ligne ${ri+1} : ${rows[ri][col]} et ${num}`);
+      } else { rows[ri][col] = num; }
+    });
+  });
+  carton.rows  = rows;
+  carton.errors = errors;
+  carton.valid  = errors.length === 0;
+  return carton;
+}
+
+function validateCartonLoto(carton) {
+  const errors = (carton.errors||[]).slice();
+  const allNums = [];
+  if (!carton.rows || carton.rows.length !== 3) {
+    carton.valid = false; carton.errors = ['Structure incorrecte']; return carton;
+  }
+  carton.rows.forEach((row, ri) => {
+    const nums = (row||[]).filter(v => v !== null);
+    if (nums.length !== 5 && !errors.some(e => e.includes(`Ligne ${ri+1}`))) {
+      errors.push(`Ligne ${ri+1} : ${nums.length} numéros (attendu 5)`);
+    }
+    (row||[]).forEach((val, ci) => {
+      if (val === null) return;
+      const [min,max] = COL_RANGES[ci];
+      if (val < min || val > max) errors.push(`${val} hors plage col ${ci+1} (${min}-${max})`);
+      if (allNums.includes(val)) { if (!errors.includes(`Doublon : ${val}`)) errors.push(`Doublon : ${val}`); }
+      else allNums.push(val);
+    });
+  });
+  carton.valid  = errors.length === 0;
+  carton.errors = errors;
+  return carton;
+}
+
+async function scanWithClaude(base64Image, nbCartons) {
+  const sys = 'Tu es un expert en lecture de cartons de loto français.\n'
+    + 'Chaque carton a EXACTEMENT 3 lignes et 5 numéros par ligne (15 numéros au total, de 1 à 90).\n'
+    + 'Cases vides = ovales gris ou cases blanches sans chiffre, IGNORE-LES.\n'
+    + 'Numéros collés visuellement comme "1228" = deux numéros séparés "12" et "28".\n'
+    + 'Lis de gauche à droite sur chaque ligne, donne uniquement les 5 numéros présents.\n'
+    + 'Réponds UNIQUEMENT avec un tableau JSON pur, sans texte, sans markdown, sans backticks.\n'
+    + 'Exemple: [{"id":1,"line1":[12,28,47,55,64],"line2":[10,33,46,77,84],"line3":[2,27,31,68,74]}]';
+
+  const usr = `Cette image contient ${nbCartons > 0 ? nbCartons : 'plusieurs'} carton(s) de loto.\n`
+    + 'Lis chaque carton et donne exactement 5 numéros par ligne.\n'
+    + 'Réponds uniquement avec le tableau JSON, rien d\'autre.';
+
+  const res = await fetch('/api/claude', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-opus-4-5',
+      max_tokens: 6000,
+      system: sys,
+      messages: [{ role: 'user', content: [
+        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64Image } },
+        { type: 'text', text: usr }
+      ]}]
+    })
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  const raw = (data.content.find(b => b.type === 'text') || {}).text || '';
+  const clean = raw.replace(/```json|```/g, '').trim();
+  const match = clean.match(/\[[\s\S]*\]/);
+  if (!match) throw new Error('Pas de JSON trouvé — améliore la qualité de la photo.');
+  return JSON.parse(match[0]);
+}
+
+// Redimensionner et convertir une image en base64 JPEG
+function imageToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
     img.onload = () => {
-      const rot = (orientation >= 5 && orientation <= 8);
-      let w = rot ? img.height : img.width;
-      let h = rot ? img.width  : img.height;
-      const MAX = 2000;
-      const scale = Math.min(1, MAX / Math.max(w, h));
-      const cw = Math.round(w*scale), ch = Math.round(h*scale);
+      const MAX = 2400;
+      let w = img.width, h = img.height;
+      if (w > MAX || h > MAX) {
+        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+        else { w = Math.round(w * MAX / h); h = MAX; }
+      }
       const cv = document.createElement('canvas');
-      cv.width = cw; cv.height = ch;
-      const ctx = cv.getContext('2d');
-      ctx.save();
-      if (orientation===6){ctx.translate(ch,0);ctx.rotate(Math.PI/2);}
-      else if (orientation===8){ctx.translate(0,cw);ctx.rotate(-Math.PI/2);}
-      else if (orientation===3){ctx.translate(cw,ch);ctx.rotate(Math.PI);}
-      ctx.drawImage(img, 0, 0, cw, ch);
-      ctx.restore();
-      // Force portrait only for multi-card plates (single cards can be landscape)
-      if (cv.width > cv.height && forcePortrait) {
-        const rv = document.createElement('canvas');
-        rv.width = cv.height; rv.height = cv.width;
-        const rc = rv.getContext('2d');
-        rc.translate(0, cv.width);
-        rc.rotate(-Math.PI/2);
-        rc.drawImage(cv, 0, 0);
-        URL.revokeObjectURL(url);
-        return resolve(rv);
+      cv.width = w; cv.height = h;
+      cv.getContext('2d').drawImage(img, 0, 0, w, h);
+      let quality = 0.85, dataUrl = cv.toDataURL('image/jpeg', quality);
+      while (dataUrl.length * 0.75 > 4.5 * 1024 * 1024 && quality > 0.3) {
+        quality -= 0.1;
+        dataUrl = cv.toDataURL('image/jpeg', quality);
       }
       URL.revokeObjectURL(url);
-      resolve(cv);
+      resolve(dataUrl.split(',')[1]);
     };
+    img.onerror = reject;
     img.src = url;
   });
 }
 
-// Crop canvas into N card canvases (column-major order)
-function cropCardCanvases(canvas, n) {
-  if (n === 1) {
-    const cv = document.createElement('canvas');
-    cv.width = canvas.width; cv.height = canvas.height;
-    cv.getContext('2d').drawImage(canvas, 0, 0);
-    return [cv];
-  }
-  const cols = 2, rows = Math.ceil(n / cols);
-  const W = canvas.width, H = canvas.height;
-  const mx = Math.round(W * 0.008), my = Math.round(H * 0.008);
-  const cardW = Math.round((W - mx*2) / cols);
-  const cardH = Math.round((H - my*2) / rows);
-  const crops = [];
-  for (let col=0; col<cols; col++) {
-    for (let row=0; row<rows; row++) {
-      const cv = document.createElement('canvas');
-      cv.width = cardW; cv.height = cardH;
-      cv.getContext('2d').drawImage(canvas, mx+col*cardW, my+row*cardH, cardW, cardH, 0, 0, cardW, cardH);
-      crops.push(cv);
-    }
-  }
-  return crops.slice(0, n);
-}
-
-// Extract one cell canvas from card canvas
-function extractCell(cardCanvas, row, col, rows=3, cols=9) {
-  const W = cardCanvas.width, H = cardCanvas.height;
-  // Small margin to avoid borders between cells
-  const mx = Math.round(W * 0.01), my = Math.round(H * 0.015);
-  const cellW = (W - mx*2) / cols;
-  const cellH = (H - my*2) / rows;
-  // Inner padding to focus on the number itself
-  const pad = 0.1;
-  const x = Math.round(mx + col*cellW + cellW*pad);
-  const y = Math.round(my + row*cellH + cellH*pad);
-  const w = Math.round(cellW * (1-pad*2));
-  const h = Math.round(cellH * (1-pad*2));
-  const cv = document.createElement('canvas');
-  cv.width  = Math.max(w, 1);
-  cv.height = Math.max(h, 1);
-  cv.getContext('2d').drawImage(cardCanvas, x, y, w, h, 0, 0, w, h);
-  return cv;
-}
-
-// Send all 27 cells to Google Vision in one batch request
-async function scanCardVision(cardCanvas) {
-  // Build 27 cell images
-  const cells = [];
-  for (let r=0; r<3; r++)
-    for (let c=0; c<9; c++)
-      cells.push({ row:r, col:c, b64: extractCell(cardCanvas, r, c).toDataURL('image/jpeg', 0.92).split(',')[1] });
-
-  const res = await fetch('/api/vision', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ cells })
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(()=>({}));
-    throw new Error(err.error || `HTTP ${res.status}`);
-  }
-  const { results } = await res.json();
-
-  // results[i] = { row, col, text }
-  const grid = [Array(9).fill(null), Array(9).fill(null), Array(9).fill(null)];
-  for (const r of results) {
-    const clean = (r.text||'').replace(/\D/g,'').trim();
-    if (!clean) continue;
-    const n = parseInt(clean, 10);
-    if (isNaN(n) || n < 1 || n > 90) continue;
-    // Verify the number belongs to its expected column
-    const expectedCol = n <= 9 ? 0 : n >= 80 ? 8 : Math.floor(n/10);
-    if (expectedCol === r.col && grid[r.row][r.col] === null) {
-      grid[r.row][r.col] = n;
-    }
-  }
-  // Check if we got anything useful
-  const total = grid.flat().filter(v=>v!==null).length;
-  if (total === 0) throw new Error('Aucun numéro détecté — vérifiez la clé API Google Vision dans Vercel (Settings → Environment Variables → GOOGLE_VISION_API_KEY)');
-  return grid;
-}
-
 function ScannerModal({onSaveCards, onCancel, lm}) {
   const PLATE_SIZES = [1, 6, 12, 18, 24];
-  const [images,     setImages]     = useState([]); // [{canvas, url}]
-  const [ps,         setPs]         = useState(1);
-  const [plateColor, setPlateColor] = useState(CARD_COLORS[0]);
-  const [cards,      setCards]      = useState([]);
-  const [scanning,   setScanning]   = useState(false);
-  const [progress,   setProgress]   = useState({step:0, total:0});
-  const [done,       setDone]       = useState(false);
-  const [error,      setError]      = useState(null);
-  const [ai,         setAi]         = useState(0);
-  const [ec,         setEc]         = useState(null);
-  const [ev,         setEv]         = useState('');
-  // Cropper state
-  const [cropIdx,    setCropIdx]    = useState(null); // index of image being cropped
-  const [cropBox,    setCropBox]    = useState(null); // {x,y,w,h} in % of display
-  const [cropDrag,   setCropDrag]   = useState(null); // drag start info
-  const cropImgRef = useRef();
+  const [file,        setFile]        = useState(null);
+  const [previewUrl,  setPreviewUrl]  = useState(null);
+  const [ps,          setPs]          = useState(1);
+  const [plateColor,  setPlateColor]  = useState(CARD_COLORS[0]);
+  const [cards,       setCards]       = useState([]);
+  const [scanning,    setScanning]    = useState(false);
+  const [done,        setDone]        = useState(false);
+  const [error,       setError]       = useState(null);
+  const [ai,          setAi]          = useState(0);
+  const [ec,          setEc]          = useState(null);
+  const [ev,          setEv]          = useState('');
   const fRef = useRef(), cRef = useRef();
-  const needMulti = ps >= 18;
 
-  const loadFile = async (f) => {
+  const loadFile = (f) => {
     if (!f) return;
-    setError(null);
-    const arrayBuf = await new Promise(r => {
-      const fr = new FileReader();
-      fr.onload = e => r(e.target.result);
-      fr.readAsArrayBuffer(f);
-    });
-    const canvas = await normalizeImageCanvas(arrayBuf, ps > 1);
-    const url    = canvas.toDataURL('image/jpeg', 0.7);
-    if (needMulti) {
-      setImages(prev => [...prev, {canvas, url}]);
-    } else {
-      setImages([{canvas, url}]);
-      setDone(false); setCards([]);
-    }
+    setFile(f);
+    setPreviewUrl(URL.createObjectURL(f));
+    setDone(false); setCards([]); setError(null);
   };
-
-  // Apply crop to an image and replace it
-  const applyCrop = (idx) => {
-    const img = images[idx];
-    if (!img || !cropBox) return;
-    const cv = img.canvas;
-    const x = Math.round(cropBox.x / 100 * cv.width);
-    const y = Math.round(cropBox.y / 100 * cv.height);
-    const w = Math.round(cropBox.w / 100 * cv.width);
-    const h = Math.round(cropBox.h / 100 * cv.height);
-    const cropped = document.createElement('canvas');
-    cropped.width = Math.max(1, w);
-    cropped.height = Math.max(1, h);
-    cropped.getContext('2d').drawImage(cv, x, y, w, h, 0, 0, w, h);
-    const url = cropped.toDataURL('image/jpeg', 0.92);
-    setImages(prev => prev.map((im, i) => i === idx ? {canvas: cropped, url} : im));
-    setCropIdx(null); setCropBox(null);
-  };
-
-  // Pointer events for crop rectangle
-  const onCropStart = (e) => {
-    e.preventDefault();
-    const rect = cropImgRef.current.getBoundingClientRect();
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    const x = (clientX - rect.left) / rect.width * 100;
-    const y = (clientY - rect.top) / rect.height * 100;
-    setCropDrag({startX: x, startY: y});
-    setCropBox({x, y, w: 0, h: 0});
-  };
-
-  const onCropMove = (e) => {
-    if (!cropDrag) return;
-    e.preventDefault();
-    const rect = cropImgRef.current.getBoundingClientRect();
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    const curX = Math.max(0, Math.min(100, (clientX - rect.left) / rect.width * 100));
-    const curY = Math.max(0, Math.min(100, (clientY - rect.top) / rect.height * 100));
-    const x = Math.min(cropDrag.startX, curX);
-    const y = Math.min(cropDrag.startY, curY);
-    const w = Math.abs(curX - cropDrag.startX);
-    const h = Math.abs(curY - cropDrag.startY);
-    setCropBox({x, y, w, h});
-  };
-
-  const onCropEnd = () => { setCropDrag(null); };
 
   const scan = async () => {
-    if (!images.length) return;
-    setScanning(true); setError(null); setProgress({step:0, total:ps});
-    setCards([]);
-
+    if (!file) return;
+    setScanning(true); setError(null); setCards([]);
     try {
-      // Build all crop canvases
-      const allCrops = [];
-      if (images.length === 1) {
-        cropCardCanvases(images[0].canvas, ps).forEach(c => allCrops.push(c));
-      } else {
-        const perPlate = Math.ceil(ps / images.length);
-        images.forEach(img => cropCardCanvases(img.canvas, perPlate).forEach(c => allCrops.push(c)));
-      }
-
-      const total   = Math.min(allCrops.length, ps);
-      const results = [];
-      for (let i=0; i<total; i++) {
-        setProgress({step:i+1, total});
-        try {
-          const grid = await scanCardVision(allCrops[i]);
-          results.push({id:i, validated:false, label:'', grid, scanError:null});
-        } catch(e) {
-          results.push({id:i, validated:false, label:'', grid:emptyGrid(), scanError:e.message});
-        }
-        setCards([...results]);
-      }
+      const b64 = await imageToBase64(file);
+      const raw = await scanWithClaude(b64, ps);
+      const result = raw.map((c, i) => {
+        c.id = c.id || i + 1;
+        c = buildGridFromLines(c);
+        c = validateCartonLoto(c);
+        // Convertir rows → grid format QuineO
+        const grid = c.rows;
+        return { id: i, validated: c.valid, label: '', grid, errors: c.errors, scanError: null };
+      });
+      setCards(result);
       setDone(true); setAi(0);
     } catch(e) {
       setError(e.message);
@@ -1134,7 +1042,7 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
         React.createElement('div', {style:{display:'flex',gap:5,flexWrap:'wrap'}},
           PLATE_SIZES.map(s =>
             React.createElement('button', {key:s,
-              onClick:()=>{setPs(s);setDone(false);setCards([]);if(!needMulti)setImages([]);},
+              onClick:()=>{setPs(s);setDone(false);setCards([]);},
               style:{padding:'8px 12px',borderRadius:8,cursor:'pointer',
                 fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:13,
                 border:`2px solid ${ps===s?(lm?'#2563eb':'#f5c518'):(lm?'#e5e7eb':'rgba(255,255,255,.1)')}`,
@@ -1167,113 +1075,29 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
         )
       ),
 
-      // Zone image(s)
-      needMulti
-        ? React.createElement('div', {style:{marginBottom:10}},
-            React.createElement('div', {style:{fontSize:11,color:lm?'#6b7280':'rgba(255,255,255,.5)',
-              marginBottom:6,lineHeight:1.5}},
-              `📋 ${ps} cartons → importer ${Math.ceil(ps/12)} photos (12 cartons/photo conseillé)`),
-            React.createElement('div', {style:{display:'flex',gap:6,flexWrap:'wrap',marginBottom:6}},
-              images.map((m,i) =>
-                React.createElement('div', {key:i, style:{position:'relative'}},
-                  React.createElement('img', {src:m.url, alt:'',
-                    style:{width:80,height:60,objectFit:'cover',borderRadius:6,
-                      border:`2px solid ${lm?'#e5e7eb':'rgba(255,255,255,.2)'}`}}),
-                  React.createElement('button', {
-                    onClick:()=>setImages(prev=>prev.filter((_,j)=>j!==i)),
-                    style:{position:'absolute',top:-6,right:-6,width:18,height:18,borderRadius:'50%',
-                      background:'#ef4444',color:'#fff',border:'none',cursor:'pointer',
-                      fontSize:10,fontWeight:900,display:'flex',alignItems:'center',justifyContent:'center'}},
-                    '×'),
-                  React.createElement('button', {
-                    onClick:()=>{setCropIdx(i);setCropBox(null);},
-                    style:{position:'absolute',bottom:-6,right:-6,width:18,height:18,borderRadius:'50%',
-                      background:'#2563eb',color:'#fff',border:'none',cursor:'pointer',
-                      fontSize:10,display:'flex',alignItems:'center',justifyContent:'center',
-                      fontWeight:700}},
-                    '✂')
-                )
-              ),
-              React.createElement('button', {onClick:()=>fRef.current.click(),
-                style:{width:80,height:60,borderRadius:6,cursor:'pointer',fontSize:24,
-                  border:`2px dashed ${lm?'#d1d5db':'rgba(255,255,255,.2)'}`,
-                  background:lm?'#f9fafb':'rgba(255,255,255,.04)',
-                  color:lm?'#9ca3af':'rgba(255,255,255,.4)'}}, '+')
-            )
+      // Zone image
+      previewUrl
+        ? React.createElement('div', {style:{position:'relative',marginBottom:10}},
+            React.createElement('img', {src:previewUrl, alt:'',
+              style:{width:'100%',maxHeight:200,objectFit:'contain',borderRadius:8,
+                border:`1px solid ${lm?'#e5e7eb':'rgba(255,255,255,.1)'}`}}),
+            React.createElement('button', {
+              onClick:()=>{setFile(null);setPreviewUrl(null);setDone(false);setCards([]);},
+              style:{position:'absolute',top:6,right:6,padding:'4px 10px',
+                borderRadius:7,cursor:'pointer',fontSize:11,fontWeight:700,
+                background:'rgba(0,0,0,.55)',color:'#fff',border:'1.5px solid rgba(255,255,255,.4)',
+                backdropFilter:'blur(4px)',WebkitTapHighlightColor:'transparent'}},
+              '✕ Changer')
           )
-        : images.length===0
-          ? React.createElement('div', {
-              style:{border:`2px dashed ${lm?'#d1d5db':'rgba(255,255,255,.15)'}`,borderRadius:10,
-                padding:'20px',textAlign:'center',cursor:'pointer',
-                background:lm?'#f9fafb':'rgba(255,255,255,.02)',marginBottom:10},
-              onClick:()=>fRef.current.click()},
-              React.createElement('div', {style:{fontSize:36,marginBottom:6}}, '🎴'),
-              React.createElement('div', {style:{fontSize:13,color:lm?'#6b7280':'rgba(255,255,255,.35)',fontWeight:600}},
-                'Importer une photo'))
-          : React.createElement('div', {style:{position:'relative',marginBottom:10}},
-              React.createElement('img', {src:images[0].url, alt:'',
-                style:{width:'100%',maxHeight:150,objectFit:'contain',borderRadius:8,
-                  border:`1px solid ${lm?'#e5e7eb':'rgba(255,255,255,.1)'}`}}),
-              React.createElement('button', {
-                onClick:()=>{setCropIdx(0);setCropBox(null);},
-                title:'Recadrer',
-                style:{position:'absolute',bottom:6,right:6,padding:'5px 10px',
-                  borderRadius:7,cursor:'pointer',fontSize:12,fontWeight:700,
-                  background:'rgba(0,0,0,.55)',color:'#fff',border:'1.5px solid rgba(255,255,255,.4)',
-                  backdropFilter:'blur(4px)',WebkitTapHighlightColor:'transparent'}},
-                '✂️ Recadrer')
-            ),
-
-      // ── Cropper modal ──
-      cropIdx !== null && images[cropIdx] && React.createElement('div', {
-        style:{position:'fixed',inset:0,zIndex:400,background:'rgba(0,0,0,.92)',
-          display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:12,
-          padding:16}},
-
-        React.createElement('div', {style:{color:'#fff',fontFamily:"'Fredoka One',cursive",
-          fontSize:16,marginBottom:4}}, '✂️ Recadrer — tracez la zone à conserver'),
-
-        // Image with crop overlay
-        React.createElement('div', {
-          ref: cropImgRef,
-          style:{position:'relative',cursor:'crosshair',userSelect:'none',
-            maxWidth:'100%',maxHeight:'55vh',touchAction:'none'},
-          onMouseDown: onCropStart, onMouseMove: onCropMove, onMouseUp: onCropEnd,
-          onTouchStart: onCropStart, onTouchMove: onCropMove, onTouchEnd: onCropEnd},
-          React.createElement('img', {src:images[cropIdx].url, alt:'',
-            draggable:false,
-            style:{display:'block',maxWidth:'100%',maxHeight:'55vh',
-              objectFit:'contain',borderRadius:8,pointerEvents:'none'}}),
-          // Crop rectangle
-          cropBox && cropBox.w > 1 && cropBox.h > 1 && React.createElement('div', {
-            style:{position:'absolute',pointerEvents:'none',
-              left:`${cropBox.x}%`, top:`${cropBox.y}%`,
-              width:`${cropBox.w}%`, height:`${cropBox.h}%`,
-              border:'2.5px solid #f5c518',
-              background:'rgba(245,197,24,.1)',
-              boxShadow:'0 0 0 9999px rgba(0,0,0,.45)'}})
-        ),
-
-        React.createElement('div', {style:{display:'flex',gap:10}},
-          React.createElement('button', {
-            onClick:()=>{setCropIdx(null);setCropBox(null);},
-            style:{padding:'10px 20px',borderRadius:10,cursor:'pointer',
-              background:'rgba(255,255,255,.1)',color:'#fff',border:'1.5px solid rgba(255,255,255,.3)',
-              fontFamily:"'Nunito',sans-serif",fontWeight:700,fontSize:13}},
-            'Annuler'),
-          cropBox && cropBox.w > 5 && cropBox.h > 5
-            ? React.createElement('button', {
-                onClick:()=>applyCrop(cropIdx),
-                style:{padding:'10px 20px',borderRadius:10,cursor:'pointer',
-                  background:'linear-gradient(135deg,#f5c518,#ff6d00)',color:'#000',border:'none',
-                  fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:13,
-                  boxShadow:'0 4px 12px rgba(245,197,24,.4)'}},
-                '✓ Appliquer le recadrage')
-            : React.createElement('div', {style:{color:'rgba(255,255,255,.4)',fontSize:12,
-                padding:'10px 20px'}},
-                'Tracez un rectangle sur la photo')
-        )
-      ),
+        : React.createElement('div', {
+            style:{border:`2px dashed ${lm?'#d1d5db':'rgba(255,255,255,.15)'}`,borderRadius:10,
+              padding:'28px',textAlign:'center',cursor:'pointer',
+              background:lm?'#f9fafb':'rgba(255,255,255,.02)',marginBottom:10},
+            onClick:()=>fRef.current.click()},
+            React.createElement('div', {style:{fontSize:40,marginBottom:8}}, '📷'),
+            React.createElement('div', {style:{fontSize:13,color:lm?'#6b7280':'rgba(255,255,255,.35)',fontWeight:600}},
+              'Prends une photo ou importe une image')
+          ),
 
       // Inputs cachés
       React.createElement('input', {ref:fRef, type:'file', accept:'image/*',
@@ -1281,45 +1105,19 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
       React.createElement('input', {ref:cRef, type:'file', accept:'image/*', capture:'environment',
         onChange:e=>loadFile(e.target.files[0]), style:{display:'none'}}),
 
-      // Boutons
+      // Boutons action
       React.createElement('div', {style:{display:'flex',gap:7,marginBottom:10}},
         React.createElement('button', {style:{...ghostBs(lm),flex:1,padding:'9px',fontSize:12},
           onClick:()=>cRef.current.click()}, '📸 Caméra'),
         React.createElement('button', {style:{...ghostBs(lm),flex:1,padding:'9px',fontSize:12},
           onClick:()=>fRef.current.click()}, '🖼️ Galerie'),
-        images.length>0 && !scanning
+        file && !scanning
           ? React.createElement('button', {style:{...primaryBs,flex:2,padding:'9px',fontSize:13},
               onClick:scan}, '✨ Analyser')
           : scanning
             ? React.createElement('button', {style:{...primaryBs,flex:2,padding:'9px',fontSize:12,opacity:.7},
-                disabled:true},
-                progress.total>0?`⏳ ${progress.step}/${progress.total}`:'⏳…')
+                disabled:true}, '⏳ Analyse Claude…')
             : null
-      ),
-
-      // Popup progression
-      scanning && React.createElement('div', {
-        style:{position:'fixed',inset:0,zIndex:300,
-          display:'flex',alignItems:'center',justifyContent:'center',
-          background:'rgba(0,0,0,.65)',backdropFilter:'blur(4px)'}},
-        React.createElement('div', {style:{background:lm?'#fff':'#1e1b4b',borderRadius:18,
-          padding:'28px 32px',textAlign:'center',minWidth:270,
-          border:`2px solid ${lm?'#e5e7eb':'rgba(245,197,24,.3)'}`}},
-          React.createElement('div', {style:{fontSize:36,marginBottom:10,
-            animation:'spin 1.2s linear infinite',display:'inline-block'}}, '🔍'),
-          React.createElement('div', {style:{fontFamily:"'Fredoka One',cursive",fontSize:18,
-            color:lm?'#1e293b':'#f5c518',marginBottom:8}},
-            progress.total>0 ? `Carton ${progress.step} / ${progress.total}` : 'Analyse…'),
-          progress.total>0 && React.createElement('div', null,
-            React.createElement('div', {style:{width:220,height:6,
-              background:lm?'#e5e7eb':'rgba(255,255,255,.15)',borderRadius:99,overflow:'hidden',margin:'0 auto 6px'}},
-              React.createElement('div', {style:{height:6,borderRadius:99,transition:'width .3s',
-                width:`${Math.round(progress.step/progress.total*100)}%`,
-                background:'linear-gradient(90deg,#f5c518,#ff4fa3)'}})),
-            React.createElement('div', {style:{fontSize:12,color:lm?'#6b7280':'rgba(255,255,255,.5)'}},
-              'Google Vision OCR…')
-          )
-        )
       ),
 
       // Erreur
@@ -1330,9 +1128,19 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
           fontSize:11,marginBottom:10,lineHeight:1.5}},
         '⚠️ ', error),
 
-      // Validation
+      // Résultats / validation
       !scanning && done && ac && React.createElement(React.Fragment, null,
-        // Onglets
+
+        // Avertissement si erreurs de lecture
+        ac.errors && ac.errors.length > 0 && React.createElement('div', {
+          style:{background:lm?'#fffbeb':'rgba(245,197,24,.07)',
+            border:`1px solid ${lm?'#fde68a':'rgba(245,197,24,.3)'}`,
+            borderRadius:8,padding:'8px 10px',fontSize:11,marginBottom:8,
+            color:lm?'#92400e':'rgba(245,197,24,.9)',lineHeight:1.6}},
+          '⚠️ ', ac.errors.slice(0,3).join(' · ')
+        ),
+
+        // Onglets cartons
         cards.length>1 && React.createElement('div', {style:{display:'flex',gap:4,flexWrap:'wrap',marginBottom:10}},
           cards.map((c,i) =>
             React.createElement('button', {key:i, onClick:()=>setAi(i),
@@ -1345,7 +1153,7 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
           )
         ),
 
-        // Nom
+        // Nom du carton
         React.createElement('div', {style:{marginBottom:8}},
           React.createElement('div', {style:{fontSize:9,fontWeight:700,letterSpacing:1.5,
             textTransform:'uppercase',color:lm?'#9ca3af':'rgba(255,255,255,.35)',marginBottom:4}},
@@ -1428,7 +1236,7 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
         )
       ),
 
-      // Actions bas
+      // Boutons bas
       React.createElement('div', {style:{display:'flex',gap:8}},
         React.createElement('button', {style:ghostBs(lm), onClick:onCancel}, 'Annuler'),
         done&&cards.length>0&&cards.every(c=>c.validated)&&
@@ -1439,7 +1247,6 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
     )
   );
 }
-
 
 function validateGrid(grid) {
   if (!Array.isArray(grid) || grid.length !== 3) return grid;

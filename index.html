@@ -968,6 +968,10 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
   const [done,        setDone]        = useState(false);
   const [error,       setError]       = useState(null);
   const [ai,          setAi]          = useState(0);
+  const [cropMode,    setCropMode]    = useState(false);
+  const [cropBox,     setCropBox]     = useState(null);
+  const [cropDrag,    setCropDrag]    = useState(null);
+  const cropImgRef = useRef(null);
   const [ec,          setEc]          = useState(null);
   const [ev,          setEv]          = useState('');
   const fRef = useRef(), cRef = useRef();
@@ -977,6 +981,40 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
     setFile(f);
     setPreviewUrl(URL.createObjectURL(f));
     setDone(false); setCards([]); setError(null);
+  };
+
+  const onCropStart = e => {
+    e.preventDefault();
+    const rect = cropImgRef.current.getBoundingClientRect();
+    const cx = (e.touches?e.touches[0].clientX:e.clientX);
+    const cy = (e.touches?e.touches[0].clientY:e.clientY);
+    const x = (cx-rect.left)/rect.width*100, y = (cy-rect.top)/rect.height*100;
+    setCropDrag({startX:x,startY:y}); setCropBox({x,y,w:0,h:0});
+  };
+  const onCropMove = e => {
+    if (!cropDrag) return; e.preventDefault();
+    const rect = cropImgRef.current.getBoundingClientRect();
+    const cx = (e.touches?e.touches[0].clientX:e.clientX);
+    const cy = (e.touches?e.touches[0].clientY:e.clientY);
+    const curX = Math.max(0,Math.min(100,(cx-rect.left)/rect.width*100));
+    const curY = Math.max(0,Math.min(100,(cy-rect.top)/rect.height*100));
+    setCropBox({x:Math.min(cropDrag.startX,curX),y:Math.min(cropDrag.startY,curY),
+      w:Math.abs(curX-cropDrag.startX),h:Math.abs(curY-cropDrag.startY)});
+  };
+  const onCropEnd = () => setCropDrag(null);
+  const applyCrop = () => {
+    if (!cropBox||!file) return;
+    const img = new Image(); img.src = previewUrl;
+    img.onload = () => {
+      const x=Math.round(cropBox.x/100*img.width), y=Math.round(cropBox.y/100*img.height);
+      const w=Math.round(cropBox.w/100*img.width), h=Math.round(cropBox.h/100*img.height);
+      const cv = document.createElement('canvas'); cv.width=w; cv.height=h;
+      cv.getContext('2d').drawImage(img,x,y,w,h,0,0,w,h);
+      setPreviewUrl(cv.toDataURL('image/jpeg',0.92));
+      // Create a fake file blob for scan
+      cv.toBlob(blob => setFile(new File([blob],'cropped.jpg',{type:'image/jpeg'})),'image/jpeg',0.92);
+      setCropMode(false); setCropBox(null);
+    };
   };
 
   const scan = async () => {
@@ -1087,7 +1125,14 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
                 borderRadius:7,cursor:'pointer',fontSize:11,fontWeight:700,
                 background:'rgba(0,0,0,.55)',color:'#fff',border:'1.5px solid rgba(255,255,255,.4)',
                 backdropFilter:'blur(4px)',WebkitTapHighlightColor:'transparent'}},
-              '✕ Changer')
+              '✕ Changer'),
+            React.createElement('button', {
+              onClick:()=>setCropMode(true),
+              style:{position:'absolute',bottom:6,right:6,padding:'4px 10px',
+                borderRadius:7,cursor:'pointer',fontSize:11,fontWeight:700,
+                background:'rgba(0,0,0,.55)',color:'#fff',border:'1.5px solid rgba(255,255,255,.4)',
+                backdropFilter:'blur(4px)',WebkitTapHighlightColor:'transparent'}},
+              '✂️ Recadrer')
           )
         : React.createElement('div', {
             style:{border:`2px dashed ${lm?'#d1d5db':'rgba(255,255,255,.15)'}`,borderRadius:10,
@@ -1098,6 +1143,42 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
             React.createElement('div', {style:{fontSize:13,color:lm?'#6b7280':'rgba(255,255,255,.35)',fontWeight:600}},
               'Prends une photo ou importe une image')
           ),
+
+      // Crop modal
+      cropMode && React.createElement('div', {
+        style:{position:'fixed',inset:0,zIndex:400,background:'rgba(0,0,0,.92)',
+          display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+          gap:12,padding:16}},
+        React.createElement('div', {style:{color:'#fff',fontFamily:"'Fredoka One',cursive",
+          fontSize:15,marginBottom:4}}, '✂️ Tracez la zone à conserver'),
+        React.createElement('div', {ref:cropImgRef,
+          style:{position:'relative',cursor:'crosshair',userSelect:'none',
+            maxWidth:'100%',maxHeight:'55vh',touchAction:'none'},
+          onMouseDown:onCropStart, onMouseMove:onCropMove, onMouseUp:onCropEnd,
+          onTouchStart:onCropStart, onTouchMove:onCropMove, onTouchEnd:onCropEnd},
+          React.createElement('img', {src:previewUrl,alt:'',draggable:false,
+            style:{display:'block',maxWidth:'100%',maxHeight:'55vh',
+              objectFit:'contain',borderRadius:8,pointerEvents:'none'}}),
+          cropBox&&cropBox.w>1&&cropBox.h>1&&React.createElement('div', {style:{
+            position:'absolute',pointerEvents:'none',
+            left:`${cropBox.x}%`,top:`${cropBox.y}%`,
+            width:`${cropBox.w}%`,height:`${cropBox.h}%`,
+            border:'2.5px solid #f5c518',background:'rgba(245,197,24,.1)',
+            boxShadow:'0 0 0 9999px rgba(0,0,0,.5)'}})
+        ),
+        React.createElement('div', {style:{display:'flex',gap:10}},
+          React.createElement('button', {onClick:()=>{setCropMode(false);setCropBox(null);},
+            style:{padding:'10px 20px',borderRadius:10,cursor:'pointer',
+              background:'rgba(255,255,255,.1)',color:'#fff',
+              border:'1.5px solid rgba(255,255,255,.3)',
+              fontFamily:"'Nunito',sans-serif",fontWeight:700,fontSize:13}}, 'Annuler'),
+          cropBox&&cropBox.w>5&&cropBox.h>5&&React.createElement('button', {onClick:applyCrop,
+            style:{padding:'10px 20px',borderRadius:10,cursor:'pointer',
+              background:'linear-gradient(135deg,#f5c518,#ff6d00)',color:'#000',border:'none',
+              fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:13}},
+            '✓ Appliquer')
+        )
+      ),
 
       // Inputs cachés
       React.createElement('input', {ref:fRef, type:'file', accept:'image/*',
@@ -1118,6 +1199,23 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
             ? React.createElement('button', {style:{...primaryBs,flex:2,padding:'9px',fontSize:12,opacity:.7},
                 disabled:true}, '⏳ Analyse Claude…')
             : null
+      ),
+
+      // Popup analyse en cours
+      scanning && React.createElement('div', {
+        style:{position:'fixed',inset:0,zIndex:300,display:'flex',
+          alignItems:'center',justifyContent:'center',
+          background:'rgba(0,0,0,.65)',backdropFilter:'blur(4px)'}},
+        React.createElement('div', {style:{background:lm?'#fff':'#1e1b4b',borderRadius:18,
+          padding:'28px 32px',textAlign:'center',minWidth:270,
+          border:`2px solid ${lm?'#e5e7eb':'rgba(245,197,24,.3)'}`}},
+          React.createElement('div', {style:{fontSize:36,marginBottom:10,
+            animation:'spin 1.2s linear infinite',display:'inline-block'}}, '🔍'),
+          React.createElement('div', {style:{fontFamily:"'Fredoka One',cursive",fontSize:18,
+            color:lm?'#1e293b':'#f5c518',marginBottom:6}}, 'Analyse en cours…'),
+          React.createElement('div', {style:{fontSize:12,color:lm?'#6b7280':'rgba(255,255,255,.5)'}},
+            'Claude lit vos cartons, merci de patienter')
+        )
       ),
 
       // Erreur

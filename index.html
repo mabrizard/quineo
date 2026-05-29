@@ -967,11 +967,14 @@ async function scanCardVision(cardCanvas) {
       grid[r.row][r.col] = n;
     }
   }
-  return grid; // Already in correct columns, no need for validateGrid column fix
+  // Check if we got anything useful
+  const total = grid.flat().filter(v=>v!==null).length;
+  if (total === 0) throw new Error('Aucun numéro détecté — vérifiez la clé API Google Vision dans Vercel (Settings → Environment Variables → GOOGLE_VISION_API_KEY)');
+  return grid;
 }
 
 function ScannerModal({onSaveCards, onCancel, lm}) {
-  const PLATE_SIZES = [1, 6, 12, 18, 24, 36];
+  const PLATE_SIZES = [1, 6, 12, 18, 24];
   const [images,     setImages]     = useState([]); // [{canvas, url}]
   const [ps,         setPs]         = useState(1);
   const [plateColor, setPlateColor] = useState(CARD_COLORS[0]);
@@ -991,6 +994,19 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
   const fRef = useRef(), cRef = useRef();
   const needMulti = ps >= 18;
 
+  // Auto-detect likely plate size from image aspect ratio
+  const detectPlateSize = (canvas) => {
+    const ratio = canvas.height / canvas.width;
+    // Portrait plates: 6=~1.5, 12=~3.0, 18=~4.5, 24=~6.0
+    // Each row of cards adds ~1.5 to ratio (2 cols × N rows)
+    // Single card (landscape): ratio < 0.8
+    if (ratio < 0.8)  return 1;   // landscape single card
+    if (ratio < 2.0)  return 6;   // ~1.5 → 3 rows × 2 cols
+    if (ratio < 3.5)  return 12;  // ~3.0 → 6 rows × 2 cols
+    if (ratio < 5.0)  return 18;  // ~4.5 → 9 rows × 2 cols
+    return 24;                    // ~6.0 → 12 rows × 2 cols
+  };
+
   const loadFile = async (f) => {
     if (!f) return;
     setError(null);
@@ -1001,7 +1017,14 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
     });
     const canvas = await normalizeImageCanvas(arrayBuf, ps > 1);
     const url    = canvas.toDataURL('image/jpeg', 0.7);
-    if (needMulti) {
+
+    // Auto-suggest plate size
+    const suggested = detectPlateSize(canvas);
+    if (suggested !== ps) {
+      setPs(suggested);
+    }
+
+    if (needMulti || suggested >= 18) {
       setImages(prev => [...prev, {canvas, url}]);
     } else {
       setImages([{canvas, url}]);
@@ -1125,9 +1148,17 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
 
       // Nombre de cartons
       React.createElement('div', {style:{marginBottom:10}},
-        React.createElement('div', {style:{fontSize:9,fontWeight:700,letterSpacing:1.5,
-          textTransform:'uppercase',color:lm?'#9ca3af':'rgba(255,255,255,.4)',marginBottom:5}},
-          'Nombre de cartons sur la plaque'),
+        React.createElement('div', {style:{display:'flex',alignItems:'center',gap:8,marginBottom:5}},
+          React.createElement('div', {style:{fontSize:9,fontWeight:700,letterSpacing:1.5,
+            textTransform:'uppercase',color:lm?'#9ca3af':'rgba(255,255,255,.4)'}},
+            'Nombre de cartons sur la plaque'),
+          images.length>0 && React.createElement('span', {style:{fontSize:9,fontWeight:700,
+            padding:'2px 7px',borderRadius:99,
+            background:lm?'rgba(34,197,94,.12)':'rgba(0,230,118,.12)',
+            color:lm?'#16a34a':'#00e676',
+            border:`1px solid ${lm?'rgba(34,197,94,.3)':'rgba(0,230,118,.3)'}`}},
+            '✓ Auto-détecté')
+        ),
         React.createElement('div', {style:{display:'flex',gap:5,flexWrap:'wrap'}},
           PLATE_SIZES.map(s =>
             React.createElement('button', {key:s,

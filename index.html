@@ -6,9 +6,12 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Quinéo">
-<meta name="theme-color" content="#0f0c29">
-<title>Quinéo 🎱</title>
-<link rel="manifest" href="data:application/json,%7B%22name%22%3A%22Quin%C3%A9o%22%2C%22short_name%22%3A%22Quin%C3%A9o%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%230f0c29%22%2C%22theme_color%22%3A%22%230f0c29%22%7D">
+<meta name="theme-color" content="#3b2070">
+<title>Quinéo ⚪</title>
+<!-- PWA -->
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="96x96" href="/icons/favicon-96x96.png">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;background:#0f0c29;overscroll-behavior:none}
@@ -30,9 +33,23 @@ html,body{height:100%;background:#0f0c29;overscroll-behavior:none}
   animation:splashIn .7s cubic-bezier(.175,.885,.32,1.275) both;
 }
 .sp-ball{
-  font-size:80px;
-  filter:drop-shadow(0 0 30px rgba(245,197,24,.6)) drop-shadow(0 0 60px rgba(255,79,163,.3));
+  width:110px;height:110px;border-radius:50%;
+  background:radial-gradient(circle at 38% 32%, #ffffff 0%, #e8e8f0 70%, #c8c8d8 100%);
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 0 40px rgba(96,165,250,.5), 0 0 80px rgba(255,79,163,.2), inset 0 -4px 12px rgba(0,0,0,.15);
   animation:bob 2s ease-in-out infinite;
+  position:relative;overflow:hidden;
+}
+.sp-ball::before{
+  content:'';position:absolute;inset:0;border-radius:50%;
+  background:radial-gradient(circle at 36% 26%, rgba(255,255,255,.7) 0%, transparent 50%);
+}
+.sp-ball-inner{
+  width:48px;height:48px;border-radius:50%;
+  border:6px solid #1d4ed8;
+  background:#fff;display:flex;align-items:center;justify-content:center;
+  font-size:18px;font-weight:900;color:#111;font-family:sans-serif;
+  position:relative;z-index:1;
 }
 .sp-brand{
   display:flex;flex-direction:column;align-items:center;gap:4px;
@@ -69,7 +86,7 @@ html,body{height:100%;background:#0f0c29;overscroll-behavior:none}
 <body>
 <div id="splash">
   <div class="sp-logo-wrap">
-    <div class="sp-ball">🎱</div>
+    <div class="sp-ball"><div class="sp-ball-inner">42</div></div>
     <div class="sp-brand">
       <div class="sp-name">Quinéo</div>
       <div class="sp-tag">Loto &amp; Bingo électronique</div>
@@ -2329,6 +2346,16 @@ const hideSplash = () => {
   setTimeout(()=>{ sp.style.display='none'; }, 650);
 };
 setTimeout(hideSplash, 2000);
+</script>
+<!-- Service Worker PWA -->
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js')
+        .then(reg => console.log('SW enregistré:', reg.scope))
+        .catch(err => console.error('SW erreur:', err));
+    });
+  }
 </script>
 </body>
 </html>

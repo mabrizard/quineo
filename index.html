@@ -2005,15 +2005,6 @@ function App() {
       prevSigRef.current = null;
     }
   }, [mode]);
-  const prevModeRef = useRef(mode);
-
-  // Quand le mode change manuellement → reset prevSig pour repartir de zéro sur le nouvel objectif
-  useEffect(()=>{
-    if (prevModeRef.current !== mode) {
-      prevModeRef.current = mode;
-      prevSigRef.current = null;
-    }
-  }, [mode]);
   useEffect(()=>{
     const active = game.cards.filter(c=>c.category==="normal"||(c.category==="special"&&c.active));
     if (!active.length) { prevSigRef.current = null; return; }

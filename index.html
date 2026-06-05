@@ -2034,7 +2034,7 @@ function App() {
     // Célébrer uniquement quand le PREMIER carton atteint l'objectif ACTUEL
     // Ignorer les objectifs inférieurs au mode courant
     const firstQuine  = prevQuineCount  === 0 && newQuineCount  > 0 && mode === "quine";
-    const firstDouble = prevDoubleCount === 0 && newDoubleCount > 0 && (mode === "double" || mode === "full");
+    const firstDouble = prevDoubleCount === 0 && newDoubleCount > 0 && mode === "double";
     const firstFull   = prevFullCount   === 0 && newFullCount   > 0 && mode === "full";
 
     if (firstQuine || firstDouble || firstFull) {

@@ -2145,9 +2145,12 @@ function App() {
                 fontFamily:"'Fredoka One',cursive",
                 fontSize: 52,
                 fontWeight:900,
-                color: winnerCard.color,
-                textShadow:`0 0 30px ${winnerCard.color}`,
+                color: "#111",
+                background: winnerCard.color,
+                borderRadius: 14,
+                padding: "6px 28px",
                 letterSpacing:2,
+                boxShadow:`0 4px 20px ${winnerCard.color}99`,
               }
             }, winnerCard.label)
           )

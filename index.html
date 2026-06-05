@@ -467,8 +467,8 @@ function LotoCard({card, ds, mode, onToggleActive, onEdit, markerId, markerColor
 // ─── CARD LIST ───────────────────────────────────────────────────
 function CardList({cards, ds, drawnCount, mode, onSetMode, onClear, onConfirmClear, onDeleteCards, onToggleActive, onEdit, markerId, markerColor, onAdd, onScan, lm, onToggle}) {
   const count = cards.length;
-  const [density,setDensity] = useState(()=>count<=4?"full":count<=12?"compact":"mini");
-  useEffect(()=>setDensity(count<=4?"full":count<=12?"compact":"mini"),[count]);
+  const [density,setDensity] = useState(()=>count<=4?"full":"compact");
+  useEffect(()=>setDensity(count<=4?"full":"compact"),[count]);
   const sorted = useMemo(()=>sortCards(cards,ds,mode),[cards,ds,mode,drawnCount]);
 
   return (
@@ -492,7 +492,7 @@ function CardList({cards, ds, drawnCount, mode, onSetMode, onClear, onConfirmCle
           /* Separator */
           , React.createElement('div', { style: {width:1,height:18,background:lm?"#e5e7eb":"rgba(255,255,255,.12)",flexShrink:0},})
           /* Density */
-          , [["full","📋"],["compact","📄"],["mini","⬛"]].map(([d,l])=>(
+          , [["full","📋"],["compact","📄"]].map(([d,l])=>(
             React.createElement('button', { key: d, onClick: ()=>setDensity(d),
               style: {padding:"3px 8px",borderRadius:6,fontSize:10,cursor:"pointer",fontWeight:700,
                 background:density===d?(lm?"#dbeafe":"rgba(245,197,24,.12)"):"transparent",

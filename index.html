@@ -358,8 +358,8 @@ function LotoCard({card, ds, mode, onToggleActive, onEdit, markerId, markerColor
     const nums=row.filter(v=>v!==null);
     return nums.length>0&&nums.every(n=>ds.has(n))?ri:-1;
   }).filter(v=>v>=0);
-  const outlineColor = st.won?"#f5c518":st.alert?"#ff4fa3":card.color;
-  const headerBg = st.won?"linear-gradient(135deg,#f5c518,#ff6d00)":st.alert?"linear-gradient(135deg,#ff4fa3,#9c27b0)":card.color;
+  const outlineColor = st.won?"#f5c518":card.color;
+  const headerBg = st.won?"linear-gradient(135deg,#f5c518,#ff6d00)":card.color;
   const headerTxt = st.won?"#000":"#fff";
   const label = card.label||"Carton";
   const handleToggle = useCallback(num=>onToggle&&onToggle(card.id,num),[card.id,onToggle]);
@@ -368,7 +368,7 @@ function LotoCard({card, ds, mode, onToggleActive, onEdit, markerId, markerColor
     return (
       React.createElement('div', { style: {border:`2px solid ${outlineColor}`,borderRadius:12,overflow:"hidden",opacity:inactive?.35:1,
         background:lm?"#fff":"linear-gradient(135deg,rgba(30,27,75,.97),rgba(15,12,41,.97))",
-        boxShadow:st.won?"0 0 16px rgba(245,197,24,.5)":st.alert?"0 0 12px rgba(255,79,163,.4)":"0 3px 12px rgba(0,0,0,.35)",
+        boxShadow:st.won?"0 0 16px rgba(245,197,24,.5)":"0 3px 12px rgba(0,0,0,.35)",
         position:"relative"},}
         , React.createElement('div', { style: {position:"absolute",top:0,left:0,right:0,height:3,background:"linear-gradient(90deg,#ff4fa3,#00e5ff,#f5c518)"},})
         , React.createElement('div', { style: {background:headerBg,padding:"3px 6px",display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:3},}
@@ -398,10 +398,10 @@ function LotoCard({card, ds, mode, onToggleActive, onEdit, markerId, markerColor
   const fs = density==="compact"?12:15;
   return (
     React.createElement('div', { style: {border:`2px solid ${outlineColor}`,borderRadius:16,overflow:"hidden",opacity:inactive?.35:1,
-      background:lm?(st.won?"#fffbeb":st.alert?"#fdf2f8":"#fff"):"linear-gradient(135deg,rgba(30,27,75,.97),rgba(15,12,41,.97))",
+      background:lm?(st.won?"#fffbeb":"#fff"):"linear-gradient(135deg,rgba(30,27,75,.97),rgba(15,12,41,.97))",
       marginBottom:density==="compact"?8:16,position:"relative",
       boxShadow:st.won?"0 0 28px rgba(245,197,24,.5),0 6px 24px rgba(0,0,0,.4)":
-                st.alert?"0 0 18px rgba(255,79,163,.4),0 4px 20px rgba(0,0,0,.3)":
+                "0 4px 20px rgba(0,0,0,.3)":
                 lm?"0 2px 12px rgba(0,0,0,.08)":"0 6px 24px rgba(0,0,0,.4)"},}
       , React.createElement('div', { style: {position:"absolute",top:0,left:0,right:0,height:3,background:"linear-gradient(90deg,#ff4fa3,#00e5ff,#f5c518,#ff4fa3)"},})
       /* Header */

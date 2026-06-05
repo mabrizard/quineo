@@ -80,6 +80,8 @@ html,body{height:100%;background:#0f0c29;overscroll-behavior:none}
 .sp-hint{font-size:11px;color:rgba(255,255,255,.25);letter-spacing:2px;font-family:sans-serif}
 @keyframes bob{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-10px) rotate(3deg)}}
 @keyframes splashIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
+@keyframes winnerFadeIn{from{opacity:0}to{opacity:1}}
+@keyframes winnerPop{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:scale(1)}}
 @keyframes fillBar{0%{width:0}100%{width:100%}}
 </style>
 </head>
@@ -1977,6 +1979,7 @@ function App() {
   const [showStats,   setShowStats]   = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [fireworks,   setFireworks]   = useState(false);
+  const [winnerCard,  setWinnerCard]  = useState(null); // {label, color} du carton gagnant
   const [winnerIds,   setWinnerIds]   = useState(new Set());
   const [flyBall,     setFlyBall]     = useState(null);
   const [showMenu,    setShowMenu]    = useState(false);
@@ -2037,8 +2040,20 @@ function App() {
     const firstFull   = prevFullCount   === 0 && newFullCount   > 0;
 
     if (firstQuine || firstDouble || firstFull) {
+      // Trouver le carton qui vient d'atteindre l'objectif
+      const active = game.cards.filter(c=>c.category==="normal"||(c.category==="special"&&c.active));
+      const prevParts2 = new Map(prevSig.split("|").filter(Boolean).map(x=>{const [a,b]=x.split(":");return [a,b||"000"];}));
+      const winner = active.find(c=>{
+        const s = cardStatus(c.grid, ds, "full");
+        const prev = prevParts2.get(c.id)||"000";
+        if (firstFull   && s.goals.full.won   && prev[2]!=="1") return true;
+        if (firstDouble && s.goals.double.won && prev[1]!=="1") return true;
+        if (firstQuine  && s.goals.quine.won  && prev[0]!=="1") return true;
+        return false;
+      });
+      setWinnerCard(winner ? {label: winner.label||"Carton", color: winner.color||"#f5c518"} : null);
       setFireworks(true);
-      setTimeout(()=>setFireworks(false), 2500);
+      setTimeout(()=>{ setFireworks(false); setWinnerCard(null); }, 4000);
 
       setMode(prev=>{
         if (firstFull)   return "full";
@@ -2095,6 +2110,48 @@ function App() {
       `)
       , React.createElement('div', { className: "root",}
         , React.createElement(Fireworks, { active: fireworks,})
+        , winnerCard && React.createElement('div', {
+            style: {
+              position:"fixed", inset:0, zIndex:1100,
+              display:"flex", flexDirection:"column",
+              alignItems:"center", justifyContent:"center",
+              pointerEvents:"none",
+              animation:"winnerFadeIn .4s ease both",
+            }
+          },
+          React.createElement('div', {
+            style: {
+              background: "rgba(0,0,0,0.55)",
+              borderRadius: 28,
+              padding: "32px 48px",
+              display:"flex", flexDirection:"column", alignItems:"center", gap:16,
+              boxShadow: `0 0 60px 10px ${winnerCard.color}88, 0 8px 40px rgba(0,0,0,.5)`,
+              border: `3px solid ${winnerCard.color}`,
+              animation:"winnerPop .5s cubic-bezier(.175,.885,.32,1.275) both",
+            }
+          },
+            React.createElement('div', {style:{fontSize:48}}, "🏆"),
+            React.createElement('div', {
+              style:{
+                fontFamily:"'Fredoka One',cursive",
+                fontSize: 22,
+                color:"rgba(255,255,255,.7)",
+                letterSpacing:3,
+                textTransform:"uppercase",
+              }
+            }, "Gagnant !"),
+            React.createElement('div', {
+              style:{
+                fontFamily:"'Fredoka One',cursive",
+                fontSize: 52,
+                fontWeight:900,
+                color: winnerCard.color,
+                textShadow:`0 0 30px ${winnerCard.color}`,
+                letterSpacing:2,
+              }
+            }, winnerCard.label)
+          )
+        )
         , ConfirmDialog
         , flyBall&&React.createElement(FlyingBall, { number: flyBall.number, color: flyBall.color, onDone: ()=>setFlyBall(null),})
 

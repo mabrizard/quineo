@@ -1334,29 +1334,17 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
           )
         ),
 
-        // Compteur + valider
-        React.createElement('div', {style:{display:'flex',justifyContent:'space-between',
-          alignItems:'center',marginBottom:12}},
+        // Compteur
+        React.createElement('div', {style:{marginBottom:12}},
           React.createElement('span', {style:{fontSize:11,color:lm?'#6b7280':'rgba(255,255,255,.4)',fontWeight:600}},
-            `${ac.grid.flat().filter(v=>v!==null).length}/15 numéros`),
-          React.createElement('button', {
-            onClick:()=>{
-              setCards(prev=>prev.map((c,i)=>i===ai?{...c,validated:!ac.validated}:c));
-              if(!ac.validated && ai<cards.length-1) setTimeout(()=>setAi(i=>i+1),250);
-            },
-            style:{padding:'8px 16px',borderRadius:8,fontWeight:700,fontSize:13,cursor:'pointer',
-              border:`1.5px solid ${ac.validated?(lm?'#16a34a':'#00e676'):(lm?'#f59e0b':'#f5c518')}`,
-              background:ac.validated?(lm?'#dcfce7':'rgba(0,230,118,.08)'):(lm?'#fffbeb':'rgba(245,197,24,.08)'),
-              color:ac.validated?(lm?'#16a34a':'#00e676'):(lm?'#d97706':'#f5c518'),
-              WebkitTapHighlightColor:'transparent'}},
-            ac.validated?'✅ Validé':'✓ Valider')
+            `${ac.grid.flat().filter(v=>v!==null).length}/15 numéros`)
         )
       ),
 
       // Boutons bas
       React.createElement('div', {style:{display:'flex',gap:8}},
         React.createElement('button', {style:ghostBs(lm), onClick:onCancel}, 'Annuler'),
-        done&&cards.length>0&&cards.every(c=>c.validated)&&
+        done&&cards.length>0&&
           React.createElement('button', {style:primaryBs,
             onClick:()=>onSaveCards(cards.map(c=>({...c,color:plateColor})))},
             `✅ Importer ${cards.length} carton${cards.length>1?'s':''}`)
@@ -1981,6 +1969,7 @@ function App() {
   const [fireworks,   setFireworks]   = useState(false);
   const [winnerCard,  setWinnerCard]  = useState(null); // {label, color} du carton gagnant
   const [winnerIds,   setWinnerIds]   = useState(new Set());
+  const [allDrawn,    setAllDrawn]    = useState([]); // stats soirée — persist entre clearTokens
   const [flyBall,     setFlyBall]     = useState(null);
   const [showMenu,    setShowMenu]    = useState(false);
   const {confirm:showConfirm, Dialog:ConfirmDialog} = useConfirm();
@@ -2080,6 +2069,7 @@ function App() {
         return {drawn:g.drawn.filter(n=>n!==num)};
       } else {
         setFlyBall({number:num,color:ballColor(num)});
+        setAllDrawn(prev=>[...prev,num]);
         return {drawn:[...g.drawn,num]};
       }
     });
@@ -2092,7 +2082,7 @@ function App() {
   const importScanned=sc =>{ const nc=sc.map((c,i)=>({id:uid(),grid:c.grid,color:c.color||CARD_COLORS[i%CARD_COLORS.length],label:c.label||`Scan ${i+1}`,category:"normal",active:true})); upd(game.id,g=>({cards:[...g.cards,...nc]})); setShowScanner(false); };
   const newGame     = name=>{ const g=mkGame(name);setGames(p=>[...p,g]);setCurrentId(g.id);setWinnerIds(new Set()); };
   const delGame     = id  =>{ setGames(p=>{const ng=p.filter(g=>g.id!==id);if(currentId===id&&ng.length)setCurrentId(ng[0].id);return ng.length?ng:[mkGame("Soirée loto")];}); };
-  const clearTokens = id  =>{ upd(id,()=>({drawn:[]}));setWinnerIds(new Set()); prevSigRef.current=null; };
+  const clearTokens = id  =>{ upd(id,()=>({drawn:[]}));setWinnerIds(new Set()); prevSigRef.current=null; setMode("quine"); };
   const saveSets    = s   =>{ setSettings(s);setShowSettings(false); };
   const activeCards = game.cards.filter(c=>c.category==="normal"||(c.category==="special"&&c.active));
 
@@ -2226,7 +2216,7 @@ function App() {
                   onSetMode: setMode,
                   onClear: ()=>clearTokens(game.id),
                   onConfirmClear: ()=>showConfirm("Effacer tous les coches ?\nLes cartons sont conservés."),
-                  onDeleteCards: async ()=>{if(await showConfirm("Supprimer TOUS les cartons ?\nCette action est irréversible.")){upd(game.id,g=>({cards:[],drawn:[]}));setWinnerIds(new Set());}},
+                  onDeleteCards: async ()=>{if(await showConfirm("Supprimer TOUS les cartons ?\nCette action est irréversible.")){upd(game.id,g=>({cards:[],drawn:[]}));setWinnerIds(new Set());setAllDrawn([]);}},
                   onToggleActive: toggleActive,
                   onEdit: c=>{setEditCard(c);setShowEditor(true);},
                   markerId: settings.marker, markerColor: settings.markerColor,
@@ -2347,48 +2337,7 @@ function App() {
           )
 
           /* ── CONFIG ── */
-          , tab==="config"&&(
-            React.createElement('div', { style: {flex:1,overflowY:"auto",padding:"12px 12px 80px"},}
-              , React.createElement('div', { style: {background:lm?"#fff":"rgba(30,27,75,.5)",border:`1px solid ${lm?"#e5e7eb":"rgba(255,255,255,.07)"}`,borderRadius:12,padding:"14px",marginBottom:12},}
-                , React.createElement('div', { style: {fontFamily:"'Fredoka One',cursive",fontSize:15,color:lm?"#1e293b":"#f5c518",marginBottom:10},}, "🎯 Condition de victoire"   )
-                , [["quine","1 Ligne","Première ligne complète"],["double","2 Lignes","Deux lignes complètes"],["full","Carton plein","Les 3 lignes complètes"]].map(([v,l,d])=>(
-                  React.createElement('button', { key: v, onClick: ()=>setMode(v),
-                    style: {display:"block",width:"100%",padding:"10px 12px",borderRadius:9,cursor:"pointer",textAlign:"left",marginBottom:6,
-                      border:`2px solid ${mode===v?(lm?"#f59e0b":"rgba(245,197,24,.5)"):(lm?"#e5e7eb":"rgba(255,255,255,.08)")}`,
-                      background:mode===v?(lm?"rgba(245,158,11,.06)":"rgba(245,197,24,.05)"):(lm?"#f9fafb":"rgba(255,255,255,.02)"),
-                      fontFamily:"'Nunito',sans-serif",WebkitTapHighlightColor:"transparent"},}
-                    , React.createElement('div', { style: {fontWeight:800,fontSize:13,color:mode===v?(lm?"#d97706":"#f5c518"):(lm?"#1e293b":"#fff")},}, l)
-                    , React.createElement('div', { style: {fontSize:11,color:lm?"#9ca3af":"rgba(255,255,255,.35)"},}, d)
-                  )
-                ))
-              )
-              , React.createElement('div', { style: {background:lm?"#fff":"rgba(30,27,75,.5)",border:`1px solid ${lm?"#e5e7eb":"rgba(255,255,255,.07)"}`,borderRadius:12,padding:"14px",marginBottom:12},}
-                , React.createElement('div', { style: {fontFamily:"'Fredoka One',cursive",fontSize:15,color:lm?"#1e293b":"#f5c518",marginBottom:10},}, "🔄 Entre-parties" )
-                , React.createElement('button', { onClick: ()=>clearTokens(game.id),
-                  style: {...ghostBs(lm),width:"100%",marginBottom:7,justifyContent:"flex-start",padding:"11px 12px",fontSize:13},}, "🧹 Vider les coches (garder les cartons)"
 
-                )
-                , React.createElement('button', { onClick: async ()=>{
-                    if(await showConfirm("Supprimer TOUS les cartons ?\nCette action est irréversible."))
-                      {upd(game.id,g=>({cards:[],drawn:[]}));setWinnerIds(new Set());}
-                  },
-                  style: {...dangerBs(lm),width:"100%",justifyContent:"flex-start",padding:"11px 12px",fontSize:13},}, "🗑 Supprimer tous les cartons"
-
-                )
-              )
-              , React.createElement('div', { style: {background:lm?"#fff":"rgba(30,27,75,.5)",border:`1px solid ${lm?"#e5e7eb":"rgba(255,255,255,.07)"}`,borderRadius:12,padding:"14px"},}
-                , React.createElement('div', { style: {fontFamily:"'Fredoka One',cursive",fontSize:15,color:lm?"#1e293b":"#f5c518",marginBottom:8},}, "🎱 Quinéo" )
-                , React.createElement('p', { style: {fontSize:12,color:lm?"#6b7280":"rgba(255,255,255,.45)",lineHeight:1.7},}, "Gestion électronique de cartons loto papier."
-                       , React.createElement('br', null), "Tapez les cases au fur et à mesure des numéros annoncés."
-                            , React.createElement('br', null), React.createElement('br', null), "🎴 Loto français : 9×3, numéros 1–90"
-                        , React.createElement('br', null), "📸 Scanner une vraie plaque par photo (IA)"
-                         , React.createElement('br', null), "✏️ Saisie libre avec placement automatique"
-                       , React.createElement('br', null), "📜 Historique des boules disponible en haut"
-
-                )
-              )
-            )
-          )
         )
 
         /* MODALS */
@@ -2396,7 +2345,7 @@ function App() {
         , showScanner &&React.createElement(ScannerModal, { onSaveCards: importScanned, onCancel: ()=>setShowScanner(false), lm: lm,})
         , showSettings&&React.createElement(SettingsModal, { settings: settings, onSave: saveSets, onClose: ()=>setShowSettings(false), lm: lm,})
         , showGameMgr &&React.createElement(GameMgrModal, { games: games, currentGame: game.id, onNewGame: newGame, onDeleteGame: delGame, onSelectGame: id=>{setCurrentId(id);setWinnerIds(new Set());prevSigRef.current=null;setShowGameMgr(false);}, onClearTokens: clearTokens, onClose: ()=>setShowGameMgr(false), lm: lm,})
-        , showStats   &&React.createElement(StatsModal, {   drawn: game.drawn, onClose: ()=>setShowStats(false), lm: lm,})
+        , showStats   &&React.createElement(StatsModal, {   drawn: allDrawn, onClose: ()=>setShowStats(false), lm: lm,})
         , showHistory &&React.createElement(HistoryModal, { drawn: game.drawn, onClose: ()=>setShowHistory(false), lm: lm,})
       )
     )

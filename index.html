@@ -1997,6 +1997,15 @@ function App() {
 
   // Goal milestone detection — auto-progression de mode
   const prevSigRef = useRef(null);
+  const prevModeRef = useRef(mode);
+
+  // Quand le mode change manuellement → reset prevSig pour repartir de zéro sur le nouvel objectif
+  useEffect(()=>{
+    if (prevModeRef.current !== mode) {
+      prevModeRef.current = mode;
+      prevSigRef.current = null;
+    }
+  }, [mode]);
   useEffect(()=>{
     const active = game.cards.filter(c=>c.category==="normal"||(c.category==="special"&&c.active));
     if (!active.length) { prevSigRef.current = null; return; }
@@ -2035,10 +2044,11 @@ function App() {
 
     prevSigRef.current = sig;
 
-    // Célébrer uniquement quand le PREMIER carton atteint un objectif (compte passe de 0 à 1)
-    const firstQuine  = prevQuineCount  === 0 && newQuineCount  > 0;
-    const firstDouble = prevDoubleCount === 0 && newDoubleCount > 0;
-    const firstFull   = prevFullCount   === 0 && newFullCount   > 0;
+    // Célébrer uniquement quand le PREMIER carton atteint l'objectif ACTUEL
+    // Ignorer les objectifs inférieurs au mode courant
+    const firstQuine  = prevQuineCount  === 0 && newQuineCount  > 0 && mode === "quine";
+    const firstDouble = prevDoubleCount === 0 && newDoubleCount > 0 && (mode === "double" || mode === "full");
+    const firstFull   = prevFullCount   === 0 && newFullCount   > 0 && mode === "full";
 
     if (firstQuine || firstDouble || firstFull) {
       // Trouver le carton qui vient d'atteindre l'objectif
@@ -2063,7 +2073,7 @@ function App() {
         return prev;
       });
     }
-  },[ds, game.cards, game.id]);
+  },[ds, game.cards, game.id, mode]);
 
   // Toggle cell (global drawn toggle + flying ball)
   const toggleCell = useCallback((cardId, num)=>{

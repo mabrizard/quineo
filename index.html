@@ -1999,6 +1999,14 @@ function App() {
   const prevSigRef = useRef(null);
   const prevModeRef = useRef(mode);
 
+  useEffect(()=>{
+    if (prevModeRef.current !== mode) {
+      prevModeRef.current = mode;
+      prevSigRef.current = null;
+    }
+  }, [mode]);
+  const prevModeRef = useRef(mode);
+
   // Quand le mode change manuellement → reset prevSig pour repartir de zéro sur le nouvel objectif
   useEffect(()=>{
     if (prevModeRef.current !== mode) {
@@ -2156,9 +2164,12 @@ function App() {
                 fontFamily:"'Fredoka One',cursive",
                 fontSize: 52,
                 fontWeight:900,
-                color: winnerCard.color,
-                textShadow:`0 0 30px ${winnerCard.color}`,
+                color: "#111",
+                background: winnerCard.color,
+                borderRadius: 14,
+                padding: "6px 28px",
                 letterSpacing:2,
+                boxShadow:`0 4px 20px ${winnerCard.color}99`,
               }
             }, winnerCard.label)
           )

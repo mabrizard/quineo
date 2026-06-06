@@ -2,6 +2,7 @@
   "name": "Quinéo — Loto & Bingo Électronique",
   "short_name": "Quinéo",
   "description": "Application de loto et bingo électronique pour associations",
+  "lang": "fr",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#1a1035",
@@ -11,19 +12,32 @@
     {
       "src": "/icons/favicon-96x96.png",
       "sizes": "96x96",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "/icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
     },
     {
       "src": "/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

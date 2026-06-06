@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mentions légales — Quinéo</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700&display=swap');
+
+    :root {
+      --bg: #1a1035;
+      --surface: #241848;
+      --border: #3b2070;
+      --accent: #a259f7;
+      --accent2: #f97316;
+      --text: #e8e0f8;
+      --muted: #9585c0;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Sora', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 2rem 1rem 4rem;
+    }
+
+    header {
+      text-align: center;
+      padding: 2.5rem 1rem 2rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 2.5rem;
+    }
+
+    .logo {
+      font-size: 1.8rem;
+      font-weight: 700;
+      background: linear-gradient(90deg, #f97316, #ec4899, #a259f7, #22d3ee);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -0.5px;
+    }
+
+    header p { color: var(--muted); font-size: 0.85rem; margin-top: 0.4rem; }
+
+    .container { max-width: 760px; margin: 0 auto; }
+
+    h1 { font-size: 1.6rem; font-weight: 700; color: #fff; margin-bottom: 0.4rem; }
+
+    .updated { font-size: 0.8rem; color: var(--muted); margin-bottom: 2.5rem; }
+
+    section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.6rem 1.8rem;
+      margin-bottom: 1.2rem;
+    }
+
+    h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    h2::before {
+      content: '';
+      display: inline-block;
+      width: 3px;
+      height: 1rem;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+
+    p, li { font-size: 0.92rem; line-height: 1.75; color: var(--text); }
+
+    ul { padding-left: 1.4rem; margin-top: 0.5rem; }
+    li { margin-bottom: 0.3rem; }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.8rem;
+      font-size: 0.88rem;
+    }
+
+    td {
+      padding: 0.6rem 0.8rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    td:first-child { color: var(--muted); width: 40%; }
+
+    footer { text-align: center; margin-top: 3rem; color: var(--muted); font-size: 0.78rem; }
+    footer a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">Quinéo</div>
+    <p>Loto &amp; Bingo Électronique</p>
+  </header>
+
+  <div class="container">
+    <h1>Mentions légales</h1>
+    <p class="updated">Conformément à la loi n° 2004-575 du 21 juin 2004 pour la confiance dans l'économie numérique (LCEN)</p>
+
+    <section>
+      <h2>Éditeur du site</h2>
+      <table>
+        <tr><td>Raison sociale</td><td>La Forge de Marcus</td></tr>
+        <tr><td>Forme juridique</td><td>Micro-entreprise</td></tr>
+        <tr><td>Responsable</td><td>Marc-Alexandre Brizard</td></tr>
+        <tr><td>Adresse</td><td>8 route du Coteau<br>17210 Montlieu-la-Garde<br>France</td></tr>
+        <tr><td>Email</td><td><a href="mailto:mabrizard@gmail.com">mabrizard@gmail.com</a></td></tr>
+        <tr><td>SIRET</td><td>En cours d'immatriculation</td></tr>
+        <tr><td>Régime</td><td>Micro-entrepreneur (auto-entrepreneur)</td></tr>
+      </table>
+    </section>
+
+    <section>
+      <h2>Hébergement</h2>
+      <table>
+        <tr><td>Hébergeur</td><td>Vercel Inc.</td></tr>
+        <tr><td>Adresse</td><td>340 Pine Street, Suite 701<br>San Francisco, CA 94104<br>États-Unis</td></tr>
+        <tr><td>Site</td><td><a href="https://vercel.com" target="_blank">vercel.com</a></td></tr>
+      </table>
+    </section>
+
+    <section>
+      <h2>Propriété intellectuelle</h2>
+      <p>L'ensemble du contenu de ce site (textes, images, graphismes, logo, icônes, code source) est la propriété exclusive de Marc-Alexandre Brizard — La Forge de Marcus, protégé par les lois françaises et internationales relatives à la propriété intellectuelle.</p>
+      <p style="margin-top:0.8rem">Toute reproduction, représentation, modification, publication ou adaptation de tout ou partie des éléments du site, quel que soit le moyen ou le procédé utilisé, est interdite sans autorisation écrite préalable.</p>
+    </section>
+
+    <section>
+      <h2>Données personnelles</h2>
+      <p>Le traitement des données personnelles est décrit dans notre <a href="/confidentialite">Politique de confidentialité</a>. Conformément au RGPD, vous pouvez exercer vos droits en contactant : <a href="mailto:mabrizard@gmail.com">mabrizard@gmail.com</a></p>
+    </section>
+
+    <section>
+      <h2>Liens hypertextes</h2>
+      <p>Quinéo peut contenir des liens vers des sites tiers. L'éditeur ne saurait être tenu responsable du contenu de ces sites. La création de liens vers quineo.vercel.app est soumise à autorisation préalable.</p>
+    </section>
+
+    <section>
+      <h2>Droit applicable</h2>
+      <p>Les présentes mentions légales sont soumises au droit français. En cas de litige, les tribunaux français sont seuls compétents.</p>
+    </section>
+  </div>
+
+  <footer>
+    <p>© 2026 La Forge de Marcus — <a href="/confidentialite">Confidentialité</a> · <a href="/cgu">CGU</a></p>
+  </footer>
+</body>
+</html>

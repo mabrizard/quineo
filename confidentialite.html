@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Politique de confidentialité — Quinéo</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700&display=swap');
+
+    :root {
+      --bg: #1a1035;
+      --surface: #241848;
+      --border: #3b2070;
+      --accent: #a259f7;
+      --accent2: #f97316;
+      --text: #e8e0f8;
+      --muted: #9585c0;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Sora', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 2rem 1rem 4rem;
+    }
+
+    header {
+      text-align: center;
+      padding: 2.5rem 1rem 2rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 2.5rem;
+    }
+
+    .logo {
+      font-size: 1.8rem;
+      font-weight: 700;
+      background: linear-gradient(90deg, #f97316, #ec4899, #a259f7, #22d3ee);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -0.5px;
+    }
+
+    header p {
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin-top: 0.4rem;
+    }
+
+    .container {
+      max-width: 760px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 0.4rem;
+    }
+
+    .updated {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 2.5rem;
+    }
+
+    section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.6rem 1.8rem;
+      margin-bottom: 1.2rem;
+    }
+
+    h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    h2::before {
+      content: '';
+      display: inline-block;
+      width: 3px;
+      height: 1rem;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+
+    p, li {
+      font-size: 0.92rem;
+      line-height: 1.75;
+      color: var(--text);
+    }
+
+    ul {
+      padding-left: 1.4rem;
+      margin-top: 0.5rem;
+    }
+
+    li { margin-bottom: 0.3rem; }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    a:hover { text-decoration: underline; }
+
+    .highlight {
+      background: rgba(162, 89, 247, 0.1);
+      border-left: 3px solid var(--accent);
+      border-radius: 6px;
+      padding: 0.8rem 1rem;
+      margin-top: 0.8rem;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+
+    footer {
+      text-align: center;
+      margin-top: 3rem;
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+
+    footer a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">Quinéo</div>
+    <p>Loto &amp; Bingo Électronique</p>
+  </header>
+
+  <div class="container">
+    <h1>Politique de confidentialité</h1>
+    <p class="updated">Dernière mise à jour : 6 juin 2026</p>
+
+    <section>
+      <h2>Responsable du traitement</h2>
+      <p>
+        La Forge de Marcus — Marc-Alexandre Brizard<br>
+        8 route du Coteau, 17210 Montlieu-la-Garde, France<br>
+        Email : <a href="mailto:mabrizard@gmail.com">mabrizard@gmail.com</a><br>
+        SIRET : en cours d'immatriculation
+      </p>
+    </section>
+
+    <section>
+      <h2>Données collectées</h2>
+      <p>Quinéo collecte uniquement les données strictement nécessaires à son fonctionnement :</p>
+      <ul>
+        <li>Données de session stockées localement sur votre appareil (cartons, scores, préférences)</li>
+        <li>Images de cartons transmises temporairement à notre API d'analyse OCR (non conservées)</li>
+        <li>Données de paiement traitées exclusivement par Stripe (nous n'accédons pas à vos coordonnées bancaires)</li>
+      </ul>
+      <div class="highlight">
+        Quinéo ne collecte pas de données personnelles d'identification, ne crée pas de compte utilisateur et ne conserve aucune donnée sur nos serveurs en dehors du traitement OCR ponctuel.
+      </div>
+    </section>
+
+    <section>
+      <h2>Finalités du traitement</h2>
+      <ul>
+        <li>Fonctionnement de l'application (gestion des cartons et des parties)</li>
+        <li>Analyse OCR des cartons via Google Vision API et Anthropic Claude API</li>
+        <li>Traitement des paiements via Stripe (déblocage premium)</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Base légale</h2>
+      <p>Le traitement est fondé sur l'exécution du contrat (fourniture du service) conformément à l'article 6(1)(b) du RGPD.</p>
+    </section>
+
+    <section>
+      <h2>Partage des données</h2>
+      <p>Vos données peuvent être transmises aux sous-traitants suivants dans le cadre strict du service :</p>
+      <ul>
+        <li><strong>Google LLC</strong> — API Vision (OCR) — traitement ponctuel des images</li>
+        <li><strong>Anthropic PBC</strong> — API Claude (OCR) — traitement ponctuel des images</li>
+        <li><strong>Stripe Inc.</strong> — Paiement sécurisé</li>
+        <li><strong>Vercel Inc.</strong> — Hébergement de l'application</li>
+      </ul>
+      <p style="margin-top:0.8rem">Aucune donnée n'est vendue, louée ou cédée à des tiers à des fins commerciales.</p>
+    </section>
+
+    <section>
+      <h2>Conservation des données</h2>
+      <p>Les données de session sont conservées localement sur votre appareil et supprimées à votre initiative (désinstallation ou vidage du cache). Les images transmises pour OCR ne sont pas conservées après traitement.</p>
+    </section>
+
+    <section>
+      <h2>Vos droits (RGPD)</h2>
+      <p>Conformément au RGPD, vous disposez des droits suivants :</p>
+      <ul>
+        <li>Droit d'accès, de rectification et d'effacement</li>
+        <li>Droit à la limitation du traitement</li>
+        <li>Droit d'opposition</li>
+        <li>Droit à la portabilité</li>
+      </ul>
+      <p style="margin-top:0.8rem">Pour exercer ces droits : <a href="mailto:mabrizard@gmail.com">mabrizard@gmail.com</a></p>
+      <p style="margin-top:0.5rem">Vous pouvez également introduire une réclamation auprès de la <a href="https://www.cnil.fr" target="_blank">CNIL</a>.</p>
+    </section>
+
+    <section>
+      <h2>Cookies</h2>
+      <p>Quinéo n'utilise pas de cookies de traçage ou publicitaires. Le stockage local (<code>localStorage</code>) est utilisé uniquement pour sauvegarder vos préférences et données de jeu sur votre appareil.</p>
+    </section>
+
+    <section>
+      <h2>Modifications</h2>
+      <p>Cette politique peut être mise à jour. La date de dernière modification est indiquée en haut de cette page. L'utilisation continue de l'application vaut acceptation des modifications.</p>
+    </section>
+  </div>
+
+  <footer>
+    <p>© 2026 La Forge de Marcus — <a href="/mentions-legales">Mentions légales</a> · <a href="/cgu">CGU</a></p>
+  </footer>
+</body>
+</html>

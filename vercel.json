@@ -11,5 +11,10 @@
         { "key": "Access-Control-Allow-Origin", "value": "*" }
       ]
     }
+  ],
+  "redirects": [
+    { "source": "/confidentialite", "destination": "/confidentialite.html", "permanent": true },
+    { "source": "/cgu", "destination": "/cgu.html", "permanent": true },
+    { "source": "/mentions-legales", "destination": "/mentions-legales.html", "permanent": true }
   ]
 }

@@ -1089,7 +1089,26 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
       React.createElement('div', {style:{width:44,height:5,borderRadius:99,
         background:lm?'#e5e7eb':'rgba(255,255,255,.15)',margin:'0 auto 14px'}}),
       React.createElement('div', {style:{fontFamily:"'Fredoka One',cursive",fontSize:17,
-        color:lm?'#1e293b':'#f5c518',marginBottom:14}}, '📸 Scanner une plaque'),
+        color:lm?'#1e293b':'#f5c518',marginBottom:10}}, '📸 Scanner une plaque'),
+
+      React.createElement('div', {style:{
+        display:'flex', alignItems:'center', gap:8,
+        background:lm?'rgba(245,158,11,.08)':'rgba(245,197,24,.08)',
+        border:`1px solid ${lm?'#f59e0b':'rgba(245,197,24,.35)'}`,
+        borderRadius:10, padding:'8px 12px', marginBottom:14,
+      }},
+        React.createElement('span', {style:{fontSize:24,flexShrink:0}}, '📱'),
+        React.createElement('div', {style:{display:'flex',flexDirection:'column',gap:2}},
+          React.createElement('span', {style:{fontSize:12,fontWeight:800,
+            color:lm?'#92400e':'#f5c518',fontFamily:"'Nunito',sans-serif"}},
+            'Mode portrait uniquement'
+          ),
+          React.createElement('span', {style:{fontSize:11,
+            color:lm?'#78350f':'rgba(255,255,255,.55)',fontFamily:"'Nunito',sans-serif",lineHeight:1.4}},
+            'Tenez votre téléphone verticalement pour de meilleurs résultats'
+          )
+        )
+      ),
 
       // Nombre de cartons
       React.createElement('div', {style:{marginBottom:10}},

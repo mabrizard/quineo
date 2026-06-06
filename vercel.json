@@ -1,14 +1,18 @@
 {
   "functions": {
-    "api/claude.js": {
-      "maxDuration": 30
-    }
+    "api/claude.js": { "maxDuration": 30 }
   },
   "headers": [
     {
       "source": "/api/(.*)",
       "headers": [
         { "key": "Access-Control-Allow-Origin", "value": "*" }
+      ]
+    },
+    {
+      "source": "/.well-known/assetlinks.json",
+      "headers": [
+        { "key": "Content-Type", "value": "application/json" }
       ]
     }
   ],

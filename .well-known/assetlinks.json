@@ -1,0 +1,10 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "app.vercel.quineo",
+    "sha256_cert_fingerprints": [
+      "E5:BB:5E:B4:9B:78:20:0E:9E:C1:86:22:40:26:06:06:16:8E:07:F4:CC:8D:FE:6F:EF:3F:DC:44:19:83:5D:C5"
+    ]
+  }
+}]

@@ -4,15 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Quinéo">
-<meta name="theme-color" content="#3b2070">
-<title>Quinéo ⚪</title>
-<!-- PWA -->
-<link rel="manifest" href="/manifest.json">
-<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-<link rel="icon" type="image/png" sizes="96x96" href="/icons/favicon-96x96.png">
+<meta name="theme-color" content="#0f0c29">
+<title>Quinéo 🎱</title>
+<link rel="manifest" href="data:application/json,%7B%22name%22%3A%22Quin%C3%A9o%22%2C%22short_name%22%3A%22Quin%C3%A9o%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%230f0c29%22%2C%22theme_color%22%3A%22%230f0c29%22%7D">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;background:#0f0c29;overscroll-behavior:none}
@@ -34,23 +30,9 @@ html,body{height:100%;background:#0f0c29;overscroll-behavior:none}
   animation:splashIn .7s cubic-bezier(.175,.885,.32,1.275) both;
 }
 .sp-ball{
-  width:110px;height:110px;border-radius:50%;
-  background:radial-gradient(circle at 38% 32%, #ffffff 0%, #e8e8f0 70%, #c8c8d8 100%);
-  display:flex;align-items:center;justify-content:center;
-  box-shadow:0 0 40px rgba(96,165,250,.5), 0 0 80px rgba(255,79,163,.2), inset 0 -4px 12px rgba(0,0,0,.15);
+  font-size:80px;
+  filter:drop-shadow(0 0 30px rgba(245,197,24,.6)) drop-shadow(0 0 60px rgba(255,79,163,.3));
   animation:bob 2s ease-in-out infinite;
-  position:relative;overflow:hidden;
-}
-.sp-ball::before{
-  content:'';position:absolute;inset:0;border-radius:50%;
-  background:radial-gradient(circle at 36% 26%, rgba(255,255,255,.7) 0%, transparent 50%);
-}
-.sp-ball-inner{
-  width:48px;height:48px;border-radius:50%;
-  border:6px solid #1d4ed8;
-  background:#fff;display:flex;align-items:center;justify-content:center;
-  font-size:18px;font-weight:900;color:#111;font-family:sans-serif;
-  position:relative;z-index:1;
 }
 .sp-brand{
   display:flex;flex-direction:column;align-items:center;gap:4px;
@@ -81,15 +63,13 @@ html,body{height:100%;background:#0f0c29;overscroll-behavior:none}
 .sp-hint{font-size:11px;color:rgba(255,255,255,.25);letter-spacing:2px;font-family:sans-serif}
 @keyframes bob{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-10px) rotate(3deg)}}
 @keyframes splashIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
-@keyframes winnerFadeIn{from{opacity:0}to{opacity:1}}
-@keyframes winnerPop{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:scale(1)}}
 @keyframes fillBar{0%{width:0}100%{width:100%}}
 </style>
 </head>
 <body>
 <div id="splash">
   <div class="sp-logo-wrap">
-    <div class="sp-ball"><div class="sp-ball-inner">42</div></div>
+    <div class="sp-ball">🎱</div>
     <div class="sp-brand">
       <div class="sp-name">Quinéo</div>
       <div class="sp-tag">Loto &amp; Bingo électronique</div>
@@ -193,6 +173,10 @@ function cardStatus(grid, ds, mode) {
   const hitAll = all.filter(n=>ds.has(n)).length;
   const wonLines = playable.filter(l=>l.remaining===0).length;
 
+  // ── Détection carton malformé : une ligne jouable doit avoir EXACTEMENT 5 numéros ──
+  const malformedRows = playable.filter(l=>l.total!==5).map(l=>l.rowIndex);
+  const isMalformed = malformedRows.length > 0;
+
   // ── Quine (1 ligne) : max 1 par carton ──
   // La meilleure ligne non gagnée (celle avec le moins de restants)
   const notWonLines = playable.filter(l=>l.remaining>0).sort((a,b)=>a.remaining-b.remaining);
@@ -222,9 +206,9 @@ function cardStatus(grid, ds, mode) {
   };
 
   const nextGoal = wonLines>=2?"Carton plein":wonLines>=1?"2 lignes":"1 ligne";
-  if (mode==="quine")  return {won:goals.quine.won, alert:goals.quine.alert, lines:ls, hitAll, total:all.length, missing:goals.quine.missing, missingNum:oneLineMissingNum, wonLines, goals, nextGoal};
-  if (mode==="double") return {won:goals.double.won, alert:goals.double.alert, lines:ls, hitAll, total:all.length, missing:goals.double.missing, missingNum:twoLinesMissingNum, wonLines, goals, nextGoal};
-  return {won:goals.full.won, alert:goals.full.alert, lines:ls, hitAll, total:all.length, missing:goals.full.missing, missingNum:fullMissingNum, wonLines, goals, nextGoal};
+  if (mode==="quine")  return {won:goals.quine.won, alert:goals.quine.alert, lines:ls, hitAll, total:all.length, missing:goals.quine.missing, missingNum:oneLineMissingNum, wonLines, goals, nextGoal, isMalformed, malformedRows};
+  if (mode==="double") return {won:goals.double.won, alert:goals.double.alert, lines:ls, hitAll, total:all.length, missing:goals.double.missing, missingNum:twoLinesMissingNum, wonLines, goals, nextGoal, isMalformed, malformedRows};
+  return {won:goals.full.won, alert:goals.full.alert, lines:ls, hitAll, total:all.length, missing:goals.full.missing, missingNum:fullMissingNum, wonLines, goals, nextGoal, isMalformed, malformedRows};
 }
 
 function sortCards(cards, ds, mode) {
@@ -358,9 +342,9 @@ function LotoCard({card, ds, mode, onToggleActive, onEdit, markerId, markerColor
     const nums=row.filter(v=>v!==null);
     return nums.length>0&&nums.every(n=>ds.has(n))?ri:-1;
   }).filter(v=>v>=0);
-  const outlineColor = st.won?"#f5c518":card.color;
-  const headerBg = st.won?"linear-gradient(135deg,#f5c518,#ff6d00)":card.color;
-  const headerTxt = st.won?"#000":"#fff";
+  const outlineColor = st.isMalformed?"#dc2626":st.won?"#f5c518":st.alert?"#ff4fa3":card.color;
+  const headerBg = st.isMalformed?"linear-gradient(135deg,#dc2626,#991b1b)":st.won?"linear-gradient(135deg,#f5c518,#ff6d00)":st.alert?"linear-gradient(135deg,#ff4fa3,#9c27b0)":card.color;
+  const headerTxt = st.isMalformed?"#fff":st.won?"#000":"#fff";
   const label = card.label||"Carton";
   const handleToggle = useCallback(num=>onToggle&&onToggle(card.id,num),[card.id,onToggle]);
 
@@ -368,12 +352,15 @@ function LotoCard({card, ds, mode, onToggleActive, onEdit, markerId, markerColor
     return (
       React.createElement('div', { style: {border:`2px solid ${outlineColor}`,borderRadius:12,overflow:"hidden",opacity:inactive?.35:1,
         background:lm?"#fff":"linear-gradient(135deg,rgba(30,27,75,.97),rgba(15,12,41,.97))",
-        boxShadow:st.won?"0 0 16px rgba(245,197,24,.5)":"0 3px 12px rgba(0,0,0,.35)",
+        boxShadow:st.won?"0 0 16px rgba(245,197,24,.5)":st.alert?"0 0 12px rgba(255,79,163,.4)":"0 3px 12px rgba(0,0,0,.35)",
         position:"relative"},}
         , React.createElement('div', { style: {position:"absolute",top:0,left:0,right:0,height:3,background:"linear-gradient(90deg,#ff4fa3,#00e5ff,#f5c518)"},})
         , React.createElement('div', { style: {background:headerBg,padding:"3px 6px",display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:3},}
           , React.createElement('span', { style: {fontFamily:"'Fredoka One',cursive",fontSize:9,color:headerTxt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"45%"},}, label)
-          , !st.won&&(()=>{
+          , st.isMalformed&&React.createElement('span', { style: {fontFamily:"'Fredoka One',cursive",fontSize:8,
+              color:"#fecaca",fontWeight:900,textAlign:"right",flexShrink:0}},
+              "⚠️ ", st.malformedRows.map(r=>"L"+(r+1)).join(","))
+          , !st.isMalformed&&!st.won&&(()=>{
               const g = mode==="quine" ? st.goals.quine : mode==="double" ? st.goals.double : st.goals.full;
               const gl = mode==="quine" ? "1L" : mode==="double" ? "2L" : "Plein";
               return React.createElement('span', { style: {fontFamily:"'Fredoka One',cursive",fontSize:8,
@@ -383,7 +370,7 @@ function LotoCard({card, ds, mode, onToggleActive, onEdit, markerId, markerColor
                   " →", g.missingNums.slice(0,3).join("·"), g.missingNums.length>3?"…":"")
               );
             })()
-          , st.won&&React.createElement('span', { style: {fontSize:9,flexShrink:0},}, "🏆")
+          , !st.isMalformed&&st.won&&React.createElement('span', { style: {fontSize:9,flexShrink:0},}, "🏆")
         )
         , React.createElement(CardGrid, { grid: card.grid, ds: ds, cardColor: card.color, markerId: markerId, markerColor: markerColor,
           fontSize: 7, lm: lm, wonLines: wonLines, onToggle: handleToggle,})
@@ -398,9 +385,10 @@ function LotoCard({card, ds, mode, onToggleActive, onEdit, markerId, markerColor
   const fs = density==="compact"?12:15;
   return (
     React.createElement('div', { style: {border:`2px solid ${outlineColor}`,borderRadius:16,overflow:"hidden",opacity:inactive?.35:1,
-      background:lm?(st.won?"#fffbeb":"#fff"):"linear-gradient(135deg,rgba(30,27,75,.97),rgba(15,12,41,.97))",
+      background:lm?(st.won?"#fffbeb":st.alert?"#fdf2f8":"#fff"):"linear-gradient(135deg,rgba(30,27,75,.97),rgba(15,12,41,.97))",
       marginBottom:density==="compact"?8:16,position:"relative",
       boxShadow:st.won?"0 0 28px rgba(245,197,24,.5),0 6px 24px rgba(0,0,0,.4)":
+                st.alert?"0 0 18px rgba(255,79,163,.4),0 4px 20px rgba(0,0,0,.3)":
                 lm?"0 2px 12px rgba(0,0,0,.08)":"0 6px 24px rgba(0,0,0,.4)"},}
       , React.createElement('div', { style: {position:"absolute",top:0,left:0,right:0,height:3,background:"linear-gradient(90deg,#ff4fa3,#00e5ff,#f5c518,#ff4fa3)"},})
       /* Header */
@@ -417,7 +405,17 @@ function LotoCard({card, ds, mode, onToggleActive, onEdit, markerId, markerColor
           )
         )
         , React.createElement('div', { style: {display:"flex",alignItems:"center",gap:5,flexShrink:0},}
-          , !st.won&&(()=>{
+          , st.isMalformed&&React.createElement('span', { style: {display:"flex",alignItems:"center",gap:4,padding:"3px 9px",borderRadius:6,
+              background:"rgba(0,0,0,.25)",flexShrink:0},}
+            , React.createElement('span', { style: {fontFamily:"'Fredoka One',cursive",fontSize:density==="compact"?11:13,
+                color:"#fff",fontWeight:900}},
+              "⚠️ ", st.malformedRows.map(r=>{
+                const cnt=card.grid[r].filter(v=>v!==null).length;
+                return `L${r+1}: ${cnt}/5`;
+              }).join(" · ")
+            )
+          )
+          , !st.isMalformed&&!st.won&&(()=>{
               // Objectif selon le mode courant
               const g = mode==="quine" ? st.goals.quine : mode==="double" ? st.goals.double : st.goals.full;
               const goalLabel = mode==="quine" ? "1 ligne" : mode==="double" ? "2 lignes" : "Plein";
@@ -436,7 +434,7 @@ function LotoCard({card, ds, mode, onToggleActive, onEdit, markerId, markerColor
                 )
               );
             })()
-          , st.won&&React.createElement('span', { style: {fontSize:17},}, "🏆")
+          , !st.isMalformed&&st.won&&React.createElement('span', { style: {fontSize:17},}, "🏆")
           , card.category==="special"&&(
             React.createElement('button', { onClick: ()=>onToggleActive(card.id),
               style: {padding:"2px 7px",borderRadius:20,fontSize:10,fontWeight:700,cursor:"pointer",
@@ -467,8 +465,8 @@ function LotoCard({card, ds, mode, onToggleActive, onEdit, markerId, markerColor
 // ─── CARD LIST ───────────────────────────────────────────────────
 function CardList({cards, ds, drawnCount, mode, onSetMode, onClear, onConfirmClear, onDeleteCards, onToggleActive, onEdit, markerId, markerColor, onAdd, onScan, lm, onToggle}) {
   const count = cards.length;
-  const [density,setDensity] = useState(()=>count<=4?"full":"compact");
-  useEffect(()=>setDensity(count<=4?"full":"compact"),[count]);
+  const [density,setDensity] = useState(()=>count<=4?"full":count<=12?"compact":"mini");
+  useEffect(()=>setDensity(count<=4?"full":count<=12?"compact":"mini"),[count]);
   const sorted = useMemo(()=>sortCards(cards,ds,mode),[cards,ds,mode,drawnCount]);
 
   return (
@@ -492,7 +490,7 @@ function CardList({cards, ds, drawnCount, mode, onSetMode, onClear, onConfirmCle
           /* Separator */
           , React.createElement('div', { style: {width:1,height:18,background:lm?"#e5e7eb":"rgba(255,255,255,.12)",flexShrink:0},})
           /* Density */
-          , [["full","📋"],["compact","📄"]].map(([d,l])=>(
+          , [["full","📋"],["compact","📄"],["mini","⬛"]].map(([d,l])=>(
             React.createElement('button', { key: d, onClick: ()=>setDensity(d),
               style: {padding:"3px 8px",borderRadius:6,fontSize:10,cursor:"pointer",fontWeight:700,
                 background:density===d?(lm?"#dbeafe":"rgba(245,197,24,.12)"):"transparent",
@@ -505,26 +503,17 @@ function CardList({cards, ds, drawnCount, mode, onSetMode, onClear, onConfirmCle
           , React.createElement('span', { style: {marginLeft:"auto",fontSize:10,color:lm?"#9ca3af":"rgba(255,255,255,.3)",fontWeight:700},}
             , count, " carton" , count>1?"s":""
           )
-          /* Balai + Supprimer */
+          /* Balai seul — Supprimer déplacé dans Réglages pour éviter les fausses manips */
           , React.createElement('button', { onClick: async ()=>{
               if(await onConfirmClear()) onClear();
             },
             title:"Effacer tous les coches",
-            style: {padding:"4px 7px",borderRadius:7,fontSize:15,cursor:"pointer",
-              background:lm?"#fef2f2":"rgba(239,68,68,.08)",
-              border:`1.5px solid ${lm?"#fca5a5":"rgba(239,68,68,.25)"}`,
-              color:lm?"#dc2626":"#f87171",lineHeight:1,
+            style: {padding:"5px 9px",borderRadius:8,fontSize:15,cursor:"pointer",
+              background:lm?"#fffbeb":"rgba(245,197,24,.1)",
+              border:`1.5px solid ${lm?"#fde68a":"rgba(245,197,24,.3)"}`,
+              color:lm?"#d97706":"#f5c518",lineHeight:1,
               WebkitTapHighlightColor:"transparent"},}
             , "🧹"
-          )
-          , React.createElement('button', { onClick: ()=>onDeleteCards&&onDeleteCards(),
-            title:"Supprimer tous les cartons",
-            style: {padding:"4px 7px",borderRadius:7,fontSize:15,cursor:"pointer",
-              background:lm?"#fef2f2":"rgba(239,68,68,.08)",
-              border:`1.5px solid ${lm?"#fca5a5":"rgba(239,68,68,.25)"}`,
-              color:lm?"#dc2626":"#f87171",lineHeight:1,
-              WebkitTapHighlightColor:"transparent"},}
-            , "🗑"
           )
         )
       )
@@ -1089,26 +1078,7 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
       React.createElement('div', {style:{width:44,height:5,borderRadius:99,
         background:lm?'#e5e7eb':'rgba(255,255,255,.15)',margin:'0 auto 14px'}}),
       React.createElement('div', {style:{fontFamily:"'Fredoka One',cursive",fontSize:17,
-        color:lm?'#1e293b':'#f5c518',marginBottom:10}}, '📸 Scanner une plaque'),
-
-      React.createElement('div', {style:{
-        display:'flex', alignItems:'center', gap:8,
-        background:lm?'rgba(245,158,11,.08)':'rgba(245,197,24,.08)',
-        border:`1px solid ${lm?'#f59e0b':'rgba(245,197,24,.35)'}`,
-        borderRadius:10, padding:'8px 12px', marginBottom:14,
-      }},
-        React.createElement('span', {style:{fontSize:24,flexShrink:0}}, '📱'),
-        React.createElement('div', {style:{display:'flex',flexDirection:'column',gap:2}},
-          React.createElement('span', {style:{fontSize:12,fontWeight:800,
-            color:lm?'#92400e':'#f5c518',fontFamily:"'Nunito',sans-serif"}},
-            'Mode portrait uniquement'
-          ),
-          React.createElement('span', {style:{fontSize:11,
-            color:lm?'#78350f':'rgba(255,255,255,.55)',fontFamily:"'Nunito',sans-serif",lineHeight:1.4}},
-            'Tenez votre téléphone verticalement pour de meilleurs résultats'
-          )
-        )
-      ),
+        color:lm?'#1e293b':'#f5c518',marginBottom:14}}, '📸 Scanner une plaque'),
 
       // Nombre de cartons
       React.createElement('div', {style:{marginBottom:10}},
@@ -1353,17 +1323,29 @@ function ScannerModal({onSaveCards, onCancel, lm}) {
           )
         ),
 
-        // Compteur
-        React.createElement('div', {style:{marginBottom:12}},
+        // Compteur + valider
+        React.createElement('div', {style:{display:'flex',justifyContent:'space-between',
+          alignItems:'center',marginBottom:12}},
           React.createElement('span', {style:{fontSize:11,color:lm?'#6b7280':'rgba(255,255,255,.4)',fontWeight:600}},
-            `${ac.grid.flat().filter(v=>v!==null).length}/15 numéros`)
+            `${ac.grid.flat().filter(v=>v!==null).length}/15 numéros`),
+          React.createElement('button', {
+            onClick:()=>{
+              setCards(prev=>prev.map((c,i)=>i===ai?{...c,validated:!ac.validated}:c));
+              if(!ac.validated && ai<cards.length-1) setTimeout(()=>setAi(i=>i+1),250);
+            },
+            style:{padding:'8px 16px',borderRadius:8,fontWeight:700,fontSize:13,cursor:'pointer',
+              border:`1.5px solid ${ac.validated?(lm?'#16a34a':'#00e676'):(lm?'#f59e0b':'#f5c518')}`,
+              background:ac.validated?(lm?'#dcfce7':'rgba(0,230,118,.08)'):(lm?'#fffbeb':'rgba(245,197,24,.08)'),
+              color:ac.validated?(lm?'#16a34a':'#00e676'):(lm?'#d97706':'#f5c518'),
+              WebkitTapHighlightColor:'transparent'}},
+            ac.validated?'✅ Validé':'✓ Valider')
         )
       ),
 
       // Boutons bas
       React.createElement('div', {style:{display:'flex',gap:8}},
         React.createElement('button', {style:ghostBs(lm), onClick:onCancel}, 'Annuler'),
-        done&&cards.length>0&&
+        done&&cards.length>0&&cards.every(c=>c.validated)&&
           React.createElement('button', {style:primaryBs,
             onClick:()=>onSaveCards(cards.map(c=>({...c,color:plateColor})))},
             `✅ Importer ${cards.length} carton${cards.length>1?'s':''}`)
@@ -1986,9 +1968,7 @@ function App() {
   const [showStats,   setShowStats]   = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [fireworks,   setFireworks]   = useState(false);
-  const [winnerCard,  setWinnerCard]  = useState(null); // {label, color} du carton gagnant
   const [winnerIds,   setWinnerIds]   = useState(new Set());
-  const [allDrawn,    setAllDrawn]    = useState([]); // stats soirée — persist entre clearTokens
   const [flyBall,     setFlyBall]     = useState(null);
   const [showMenu,    setShowMenu]    = useState(false);
   const {confirm:showConfirm, Dialog:ConfirmDialog} = useConfirm();
@@ -2004,14 +1984,6 @@ function App() {
 
   // Goal milestone detection — auto-progression de mode
   const prevSigRef = useRef(null);
-  const prevModeRef = useRef(mode);
-
-  useEffect(()=>{
-    if (prevModeRef.current !== mode) {
-      prevModeRef.current = mode;
-      prevSigRef.current = null;
-    }
-  }, [mode]);
   useEffect(()=>{
     const active = game.cards.filter(c=>c.category==="normal"||(c.category==="special"&&c.active));
     if (!active.length) { prevSigRef.current = null; return; }
@@ -2050,27 +2022,14 @@ function App() {
 
     prevSigRef.current = sig;
 
-    // Célébrer uniquement quand le PREMIER carton atteint l'objectif ACTUEL
-    // Ignorer les objectifs inférieurs au mode courant
-    const firstQuine  = prevQuineCount  === 0 && newQuineCount  > 0 && mode === "quine";
-    const firstDouble = prevDoubleCount === 0 && newDoubleCount > 0 && mode === "double";
-    const firstFull   = prevFullCount   === 0 && newFullCount   > 0 && mode === "full";
+    // Célébrer uniquement quand le PREMIER carton atteint un objectif (compte passe de 0 à 1)
+    const firstQuine  = prevQuineCount  === 0 && newQuineCount  > 0;
+    const firstDouble = prevDoubleCount === 0 && newDoubleCount > 0;
+    const firstFull   = prevFullCount   === 0 && newFullCount   > 0;
 
     if (firstQuine || firstDouble || firstFull) {
-      // Trouver le carton qui vient d'atteindre l'objectif
-      const active = game.cards.filter(c=>c.category==="normal"||(c.category==="special"&&c.active));
-      const prevParts2 = new Map(prevSig.split("|").filter(Boolean).map(x=>{const [a,b]=x.split(":");return [a,b||"000"];}));
-      const winner = active.find(c=>{
-        const s = cardStatus(c.grid, ds, "full");
-        const prev = prevParts2.get(c.id)||"000";
-        if (firstFull   && s.goals.full.won   && prev[2]!=="1") return true;
-        if (firstDouble && s.goals.double.won && prev[1]!=="1") return true;
-        if (firstQuine  && s.goals.quine.won  && prev[0]!=="1") return true;
-        return false;
-      });
-      setWinnerCard(winner ? {label: winner.label||"Carton", color: winner.color||"#f5c518"} : null);
       setFireworks(true);
-      setTimeout(()=>{ setFireworks(false); setWinnerCard(null); }, 4000);
+      setTimeout(()=>setFireworks(false), 2500);
 
       setMode(prev=>{
         if (firstFull)   return "full";
@@ -2079,7 +2038,7 @@ function App() {
         return prev;
       });
     }
-  },[ds, game.cards, game.id, mode]);
+  },[ds, game.cards, game.id]);
 
   // Toggle cell (global drawn toggle + flying ball)
   const toggleCell = useCallback((cardId, num)=>{
@@ -2088,7 +2047,6 @@ function App() {
         return {drawn:g.drawn.filter(n=>n!==num)};
       } else {
         setFlyBall({number:num,color:ballColor(num)});
-        setAllDrawn(prev=>[...prev,num]);
         return {drawn:[...g.drawn,num]};
       }
     });
@@ -2101,7 +2059,7 @@ function App() {
   const importScanned=sc =>{ const nc=sc.map((c,i)=>({id:uid(),grid:c.grid,color:c.color||CARD_COLORS[i%CARD_COLORS.length],label:c.label||`Scan ${i+1}`,category:"normal",active:true})); upd(game.id,g=>({cards:[...g.cards,...nc]})); setShowScanner(false); };
   const newGame     = name=>{ const g=mkGame(name);setGames(p=>[...p,g]);setCurrentId(g.id);setWinnerIds(new Set()); };
   const delGame     = id  =>{ setGames(p=>{const ng=p.filter(g=>g.id!==id);if(currentId===id&&ng.length)setCurrentId(ng[0].id);return ng.length?ng:[mkGame("Soirée loto")];}); };
-  const clearTokens = id  =>{ upd(id,()=>({drawn:[]}));setWinnerIds(new Set()); prevSigRef.current=null; setMode("quine"); };
+  const clearTokens = id  =>{ upd(id,()=>({drawn:[]}));setWinnerIds(new Set()); prevSigRef.current=null; };
   const saveSets    = s   =>{ setSettings(s);setShowSettings(false); };
   const activeCards = game.cards.filter(c=>c.category==="normal"||(c.category==="special"&&c.active));
 
@@ -2128,51 +2086,6 @@ function App() {
       `)
       , React.createElement('div', { className: "root",}
         , React.createElement(Fireworks, { active: fireworks,})
-        , winnerCard && React.createElement('div', {
-            style: {
-              position:"fixed", inset:0, zIndex:1100,
-              display:"flex", flexDirection:"column",
-              alignItems:"center", justifyContent:"center",
-              pointerEvents:"none",
-              animation:"winnerFadeIn .4s ease both",
-            }
-          },
-          React.createElement('div', {
-            style: {
-              background: "rgba(0,0,0,0.55)",
-              borderRadius: 28,
-              padding: "32px 48px",
-              display:"flex", flexDirection:"column", alignItems:"center", gap:16,
-              boxShadow: `0 0 60px 10px ${winnerCard.color}88, 0 8px 40px rgba(0,0,0,.5)`,
-              border: `3px solid ${winnerCard.color}`,
-              animation:"winnerPop .5s cubic-bezier(.175,.885,.32,1.275) both",
-            }
-          },
-            React.createElement('div', {style:{fontSize:48}}, "🏆"),
-            React.createElement('div', {
-              style:{
-                fontFamily:"'Fredoka One',cursive",
-                fontSize: 22,
-                color:"rgba(255,255,255,.7)",
-                letterSpacing:3,
-                textTransform:"uppercase",
-              }
-            }, "Gagnant !"),
-            React.createElement('div', {
-              style:{
-                fontFamily:"'Fredoka One',cursive",
-                fontSize: 52,
-                fontWeight:900,
-                color: "#111",
-                background: winnerCard.color,
-                borderRadius: 14,
-                padding: "6px 28px",
-                letterSpacing:2,
-                boxShadow:`0 4px 20px ${winnerCard.color}99`,
-              }
-            }, winnerCard.label)
-          )
-        )
         , ConfirmDialog
         , flyBall&&React.createElement(FlyingBall, { number: flyBall.number, color: flyBall.color, onDone: ()=>setFlyBall(null),})
 
@@ -2235,7 +2148,7 @@ function App() {
                   onSetMode: setMode,
                   onClear: ()=>clearTokens(game.id),
                   onConfirmClear: ()=>showConfirm("Effacer tous les coches ?\nLes cartons sont conservés."),
-                  onDeleteCards: async ()=>{if(await showConfirm("Supprimer TOUS les cartons ?\nCette action est irréversible.")){upd(game.id,g=>({cards:[],drawn:[]}));setWinnerIds(new Set());setAllDrawn([]);}},
+                  onDeleteCards: async ()=>{if(await showConfirm("Supprimer TOUS les cartons ?\nCette action est irréversible.")){upd(game.id,g=>({cards:[],drawn:[]}));setWinnerIds(new Set());}},
                   onToggleActive: toggleActive,
                   onEdit: c=>{setEditCard(c);setShowEditor(true);},
                   markerId: settings.marker, markerColor: settings.markerColor,
@@ -2356,7 +2269,48 @@ function App() {
           )
 
           /* ── CONFIG ── */
+          , tab==="config"&&(
+            React.createElement('div', { style: {flex:1,overflowY:"auto",padding:"12px 12px 80px"},}
+              , React.createElement('div', { style: {background:lm?"#fff":"rgba(30,27,75,.5)",border:`1px solid ${lm?"#e5e7eb":"rgba(255,255,255,.07)"}`,borderRadius:12,padding:"14px",marginBottom:12},}
+                , React.createElement('div', { style: {fontFamily:"'Fredoka One',cursive",fontSize:15,color:lm?"#1e293b":"#f5c518",marginBottom:10},}, "🎯 Condition de victoire"   )
+                , [["quine","1 Ligne","Première ligne complète"],["double","2 Lignes","Deux lignes complètes"],["full","Carton plein","Les 3 lignes complètes"]].map(([v,l,d])=>(
+                  React.createElement('button', { key: v, onClick: ()=>setMode(v),
+                    style: {display:"block",width:"100%",padding:"10px 12px",borderRadius:9,cursor:"pointer",textAlign:"left",marginBottom:6,
+                      border:`2px solid ${mode===v?(lm?"#f59e0b":"rgba(245,197,24,.5)"):(lm?"#e5e7eb":"rgba(255,255,255,.08)")}`,
+                      background:mode===v?(lm?"rgba(245,158,11,.06)":"rgba(245,197,24,.05)"):(lm?"#f9fafb":"rgba(255,255,255,.02)"),
+                      fontFamily:"'Nunito',sans-serif",WebkitTapHighlightColor:"transparent"},}
+                    , React.createElement('div', { style: {fontWeight:800,fontSize:13,color:mode===v?(lm?"#d97706":"#f5c518"):(lm?"#1e293b":"#fff")},}, l)
+                    , React.createElement('div', { style: {fontSize:11,color:lm?"#9ca3af":"rgba(255,255,255,.35)"},}, d)
+                  )
+                ))
+              )
+              , React.createElement('div', { style: {background:lm?"#fff":"rgba(30,27,75,.5)",border:`1px solid ${lm?"#e5e7eb":"rgba(255,255,255,.07)"}`,borderRadius:12,padding:"14px",marginBottom:12},}
+                , React.createElement('div', { style: {fontFamily:"'Fredoka One',cursive",fontSize:15,color:lm?"#1e293b":"#f5c518",marginBottom:10},}, "🔄 Entre-parties" )
+                , React.createElement('button', { onClick: ()=>clearTokens(game.id),
+                  style: {...ghostBs(lm),width:"100%",marginBottom:7,justifyContent:"flex-start",padding:"11px 12px",fontSize:13},}, "🧹 Vider les coches (garder les cartons)"
 
+                )
+                , React.createElement('button', { onClick: async ()=>{
+                    if(await showConfirm("Supprimer TOUS les cartons ?\nCette action est irréversible."))
+                      {upd(game.id,g=>({cards:[],drawn:[]}));setWinnerIds(new Set());}
+                  },
+                  style: {...dangerBs(lm),width:"100%",justifyContent:"flex-start",padding:"11px 12px",fontSize:13},}, "🗑 Supprimer tous les cartons"
+
+                )
+              )
+              , React.createElement('div', { style: {background:lm?"#fff":"rgba(30,27,75,.5)",border:`1px solid ${lm?"#e5e7eb":"rgba(255,255,255,.07)"}`,borderRadius:12,padding:"14px"},}
+                , React.createElement('div', { style: {fontFamily:"'Fredoka One',cursive",fontSize:15,color:lm?"#1e293b":"#f5c518",marginBottom:8},}, "🎱 Quinéo" )
+                , React.createElement('p', { style: {fontSize:12,color:lm?"#6b7280":"rgba(255,255,255,.45)",lineHeight:1.7},}, "Gestion électronique de cartons loto papier."
+                       , React.createElement('br', null), "Tapez les cases au fur et à mesure des numéros annoncés."
+                            , React.createElement('br', null), React.createElement('br', null), "🎴 Loto français : 9×3, numéros 1–90"
+                        , React.createElement('br', null), "📸 Scanner une vraie plaque par photo (IA)"
+                         , React.createElement('br', null), "✏️ Saisie libre avec placement automatique"
+                       , React.createElement('br', null), "📜 Historique des boules disponible en haut"
+
+                )
+              )
+            )
+          )
         )
 
         /* MODALS */
@@ -2364,7 +2318,7 @@ function App() {
         , showScanner &&React.createElement(ScannerModal, { onSaveCards: importScanned, onCancel: ()=>setShowScanner(false), lm: lm,})
         , showSettings&&React.createElement(SettingsModal, { settings: settings, onSave: saveSets, onClose: ()=>setShowSettings(false), lm: lm,})
         , showGameMgr &&React.createElement(GameMgrModal, { games: games, currentGame: game.id, onNewGame: newGame, onDeleteGame: delGame, onSelectGame: id=>{setCurrentId(id);setWinnerIds(new Set());prevSigRef.current=null;setShowGameMgr(false);}, onClearTokens: clearTokens, onClose: ()=>setShowGameMgr(false), lm: lm,})
-        , showStats   &&React.createElement(StatsModal, {   drawn: allDrawn, onClose: ()=>setShowStats(false), lm: lm,})
+        , showStats   &&React.createElement(StatsModal, {   drawn: game.drawn, onClose: ()=>setShowStats(false), lm: lm,})
         , showHistory &&React.createElement(HistoryModal, { drawn: game.drawn, onClose: ()=>setShowHistory(false), lm: lm,})
       )
     )
@@ -2383,16 +2337,6 @@ const hideSplash = () => {
   setTimeout(()=>{ sp.style.display='none'; }, 650);
 };
 setTimeout(hideSplash, 2000);
-</script>
-<!-- Service Worker PWA -->
-<script>
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js')
-        .then(() => {})
-        .catch(err => console.error('SW erreur:', err));
-    });
-  }
 </script>
 </body>
 </html>

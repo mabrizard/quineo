@@ -156,6 +156,8 @@ function canPlace(grid, n) {
 
 function removeNumber(grid, n) { return grid.map(row=>row.map(v=>v===n?null:v)); }
 
+const APP_VERSION = "1.0.0";
+
 function lineStatus(row, ds) {
   const nums = row.filter(v=>v!==null);
   const hit  = nums.filter(n=>ds.has(n)).length;
@@ -1388,7 +1390,7 @@ function validateGrid(grid) {
   }
   return corrected;
 }
-function SettingsModal({settings, onSave, onClose, lm}) {
+function SettingsModal({settings, onSave, onClose, onClearTokensGlobal, onDeleteCardsGlobal, lm}) {
   const [marker,setMarker]=useState(settings.marker);
   const [mc,setMc]=useState(settings.markerColor);
   const [light,setLight]=useState(settings.lightMode||false);
@@ -1457,10 +1459,25 @@ function SettingsModal({settings, onSave, onClose, lm}) {
           )
         )
 
+        /* Cartons & partie */
+        , React.createElement('div', { style: {fontSize:9,color:lm?"#9ca3af":"rgba(255,255,255,.3)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:5,marginTop:6,fontWeight:700},}, "Cartons & partie")
+        , React.createElement('div', { style: {marginBottom:14},}
+          , React.createElement('button', { onClick: onClearTokensGlobal,
+            style: {...ghostBs(lm),width:"100%",marginBottom:7,justifyContent:"flex-start",padding:"11px 12px",fontSize:13},}, "🧹 Vider les coches (garder les cartons)"
+          )
+          , React.createElement('button', { onClick: onDeleteCardsGlobal,
+            style: {...dangerBs(lm),width:"100%",justifyContent:"flex-start",padding:"11px 12px",fontSize:13},}, "🗑 Supprimer tous les cartons"
+          )
+        )
+
         , React.createElement('div', { style: {display:"flex",gap:8},}
           , React.createElement('button', { style: ghostBs(lm), onClick: onClose,}, "Annuler")
           , React.createElement('button', { style: primaryBs, onClick: ()=>onSave({marker,markerColor:mc,lightMode:light}),}, "💾 Sauvegarder" )
         )
+
+        /* Version */
+        , React.createElement('div', { style: {textAlign:"center",marginTop:14,fontSize:10,
+            color:lm?"#cbd5e1":"rgba(255,255,255,.2)",fontWeight:600},}, "QuinéO v", APP_VERSION )
       )
     )
   );
@@ -2316,7 +2333,10 @@ function App() {
         /* MODALS */
         , showEditor  &&React.createElement(CardEditor, {  card: editCard, defaultColor: lastColor, onSave: editCard?saveCard:addCard, onCancel: ()=>{setShowEditor(false);setEditCard(null);}, onDelete: delCard, onPlay: ()=>{setShowEditor(false);setEditCard(null);}, lm: lm,})
         , showScanner &&React.createElement(ScannerModal, { onSaveCards: importScanned, onCancel: ()=>setShowScanner(false), lm: lm,})
-        , showSettings&&React.createElement(SettingsModal, { settings: settings, onSave: saveSets, onClose: ()=>setShowSettings(false), lm: lm,})
+        , showSettings&&React.createElement(SettingsModal, { settings: settings, onSave: saveSets, onClose: ()=>setShowSettings(false),
+          onClearTokensGlobal: ()=>clearTokens(game.id),
+          onDeleteCardsGlobal: async ()=>{if(await showConfirm("Supprimer TOUS les cartons ?\nCette action est irréversible.")){upd(game.id,g=>({cards:[],drawn:[]}));setWinnerIds(new Set());}},
+          lm: lm,})
         , showGameMgr &&React.createElement(GameMgrModal, { games: games, currentGame: game.id, onNewGame: newGame, onDeleteGame: delGame, onSelectGame: id=>{setCurrentId(id);setWinnerIds(new Set());prevSigRef.current=null;setShowGameMgr(false);}, onClearTokens: clearTokens, onClose: ()=>setShowGameMgr(false), lm: lm,})
         , showStats   &&React.createElement(StatsModal, {   drawn: game.drawn, onClose: ()=>setShowStats(false), lm: lm,})
         , showHistory &&React.createElement(HistoryModal, { drawn: game.drawn, onClose: ()=>setShowHistory(false), lm: lm,})

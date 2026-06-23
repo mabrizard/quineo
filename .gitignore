@@ -1,0 +1,45 @@
+# ── Android / Bubblewrap (TWA) — fichiers de build, jamais sur Git ──
+.gradle/
+app/
+build/
+gradle/
+gradlew
+gradlew.bat
+build.gradle
+settings.gradle
+gradle.properties
+twa-manifest.json
+manifest-checksum.txt
+
+# Fichiers générés (APK/AAB) — trop lourds et regénérables
+*.apk
+*.aab
+*.idsig
+app-release-bundle.aab
+app-release-signed.apk
+app-release-signed.apk.idsig
+app-release-unsigned-aligned.apk
+
+# ⚠️ CRITIQUE : clé de signature privée — ne JAMAIS committer
+android.keystore
+*.keystore
+*.jks
+
+# Icônes générées (à régénérer si besoin)
+store_icon.png
+
+# ── Node / npm (si jamais utilisé) ──
+node_modules/
+npm-debug.log
+
+# ── Système ──
+.DS_Store
+Thumbs.db
+*.log
+
+# ── Vercel ──
+.vercel/
+
+# ── Environnement local ──
+.env
+.env.local

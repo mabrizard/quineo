@@ -31,9 +31,22 @@ html,body{height:100%;background:#0f0c29;overscroll-behavior:none}
   animation:splashIn .7s cubic-bezier(.175,.885,.32,1.275) both;
 }
 .sp-ball{
-  font-size:80px;
-  filter:drop-shadow(0 0 30px rgba(245,197,24,.6)) drop-shadow(0 0 60px rgba(255,79,163,.3));
+  width:90px;height:90px;border-radius:50%;
+  background:radial-gradient(circle at 32% 26%,rgba(255,255,255,.18),transparent 45%),
+             radial-gradient(circle at 70% 75%,rgba(0,0,0,.3),transparent 60%),
+             linear-gradient(150deg,#2a2550,#0f0c29);
+  display:flex;align-items:center;justify-content:center;
+  filter:drop-shadow(0 0 30px rgba(245,197,24,.4)) drop-shadow(0 8px 20px rgba(0,0,0,.5));
   animation:bob 2s ease-in-out infinite;
+  position:relative;
+}
+.sp-ball::after{
+  content:'42';
+  width:46px;height:46px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#fff,#f1f1f4 70%);
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Fredoka One',cursive;font-size:17px;font-weight:900;color:#1a1830;
+  box-shadow:inset 0 -2px 4px rgba(0,0,0,.1);
 }
 .sp-brand{
   display:flex;flex-direction:column;align-items:center;gap:4px;
@@ -70,7 +83,7 @@ html,body{height:100%;background:#0f0c29;overscroll-behavior:none}
 <body>
 <div id="splash">
   <div class="sp-logo-wrap">
-    <div class="sp-ball">🎱</div>
+    <div class="sp-ball"></div>
     <div class="sp-brand">
       <div class="sp-name">Quinéo</div>
       <div class="sp-tag">Loto &amp; Bingo électronique</div>
@@ -158,6 +171,41 @@ function canPlace(grid, n) {
 function removeNumber(grid, n) { return grid.map(row=>row.map(v=>v===n?null:v)); }
 
 const APP_VERSION = "1.0.0";
+const FREE_CARD_LIMIT = 23;
+const LICENSE_KEY = "quineo_license_v1";
+
+// Génère une empreinte d'appareil simple et stable
+function getFingerprint() {
+  try {
+    const stored = localStorage.getItem("quineo_fp");
+    if (stored) return stored;
+    const parts = [
+      navigator.userAgent,
+      navigator.language,
+      screen.width + "x" + screen.height,
+      new Date().getTimezoneOffset(),
+      navigator.hardwareConcurrency || 0,
+    ].join("|");
+    let hash = 0;
+    for (let i = 0; i < parts.length; i++) {
+      hash = ((hash << 5) - hash + parts.charCodeAt(i)) | 0;
+    }
+    const fp = "fp_" + Math.abs(hash).toString(36) + "_" + Date.now().toString(36).slice(-4);
+    localStorage.setItem("quineo_fp", fp);
+    return fp;
+  } catch (e) {
+    return "fp_unknown";
+  }
+}
+
+function getStoredLicense() {
+  try { return JSON.parse(localStorage.getItem(LICENSE_KEY) || "null"); }
+  catch { return null; }
+}
+function setStoredLicense(data) {
+  try { localStorage.setItem(LICENSE_KEY, JSON.stringify(data)); }
+  catch {}
+}
 
 function lineStatus(row, ds) {
   const nums = row.filter(v=>v!==null);
@@ -1971,6 +2019,83 @@ const dangerBs = lm => ({
 // ─── APP ─────────────────────────────────────────────────────────
 function mkGame(name) { return {id:uid(),name,cards:[],drawn:[],createdAt:Date.now()}; }
 
+
+// ─── LICENSE MODAL ───────────────────────────────────────────────
+function LicenseModal({onClose, onActivated, lm}) {
+  const [code, setCode] = useState("");
+  const [checking, setChecking] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+  const shBg=lm?"#fff":"#1a1548", shBrd=lm?"#e5e7eb":"rgba(245,197,24,.2)";
+
+  const activate = async () => {
+    if (!code.trim()) return;
+    setChecking(true); setError(null); setSuccess(null);
+    try {
+      const fp = getFingerprint();
+      const res = await fetch("/api/verify-license", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ action:"verify", code: code.trim(), fingerprint: fp })
+      });
+      const data = await res.json();
+      if (data.valid) {
+        setStoredLicense({ valid:true, code: code.trim().toUpperCase(), activatedAt: new Date().toISOString() });
+        setSuccess(data.message || "Licence activée !");
+        setTimeout(()=>onActivated(), 1200);
+      } else {
+        setError(data.error || "Code invalide");
+      }
+    } catch (e) {
+      setError("Erreur de connexion — réessayez");
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  return (
+    React.createElement('div', { style: {position:"fixed",inset:0,background:"rgba(0,0,0,.8)",zIndex:250,display:"flex",
+      alignItems:"flex-end",justifyContent:"center",backdropFilter:"blur(4px)"}, onClick: onClose,}
+      , React.createElement('div', { style: {background:shBg,border:`2px solid ${shBrd}`,borderRadius:"22px 22px 0 0",
+        padding:"12px 16px max(28px,env(safe-area-inset-bottom))",
+        width:"100%",maxWidth:600,maxHeight:"90dvh",overflowY:"auto"}, onClick: e=>e.stopPropagation(),}
+        , React.createElement('div', { style: {width:44,height:5,borderRadius:99,background:lm?"#e5e7eb":"rgba(255,255,255,.15)",margin:"0 auto 14px"},})
+        , React.createElement('div', { style: {textAlign:"center",marginBottom:16},}
+          , React.createElement('div', { style: {fontSize:40,marginBottom:8},}, "✨")
+          , React.createElement('div', { style: {fontFamily:"'Fredoka One',cursive",fontSize:19,color:lm?"#1e293b":"#f5c518",marginBottom:4},}, "Activer Premium")
+          , React.createElement('div', { style: {fontSize:12,color:lm?"#6b7280":"rgba(255,255,255,.45)",lineHeight:1.5},},
+            "Entrez le code reçu après votre achat pour débloquer toutes les fonctionnalités."
+          )
+        )
+        , React.createElement('input', { type:"text", placeholder:"QUINEO-XXXX-XXXX-XXXX", value:code,
+          onChange:e=>setCode(e.target.value.toUpperCase()),
+          onKeyDown:e=>e.key==="Enter"&&activate(),
+          style: {display:"block",width:"100%",textAlign:"center",letterSpacing:1.5,
+            background:lm?"#f9fafb":"rgba(255,255,255,.06)",
+            border:`2px solid ${error?"#ef4444":lm?"#e5e7eb":"rgba(255,255,255,.15)"}`,
+            borderRadius:11,color:lm?"#1e293b":"#fff",
+            fontFamily:"'Fredoka One',cursive",fontSize:16,
+            padding:"13px 12px",outline:"none",marginBottom:10,textTransform:"uppercase"},
+        })
+        , error&&React.createElement('div', { style: {fontSize:12,color:"#ef4444",fontWeight:700,
+            textAlign:"center",marginBottom:10,lineHeight:1.5},}, "⚠️ ", error)
+        , success&&React.createElement('div', { style: {fontSize:12,color:"#16a34a",fontWeight:700,
+            textAlign:"center",marginBottom:10},}, "✅ ", success)
+        , React.createElement('div', { style: {display:"flex",gap:8,marginBottom:14},}
+          , React.createElement('button', { style: ghostBs(lm), onClick: onClose,}, "Annuler")
+          , React.createElement('button', { style: {...primaryBs,opacity:checking?.6:1}, onClick: activate, disabled: checking,},
+            checking?"⏳ Vérification…":"✓ Activer"
+          )
+        )
+        , React.createElement('div', { style: {textAlign:"center",fontSize:11,color:lm?"#9ca3af":"rgba(255,255,255,.3)",
+            paddingTop:10,borderTop:`1px solid ${lm?"#f3f4f6":"rgba(255,255,255,.06)"}`},},
+          "Pas encore de licence ? Achetez Premium pour 14,99€ — scanner illimité, cartons sans limite."
+        )
+      )
+    )
+  );
+}
+
 function App() {
   const saved = load();
   const [settings,    setSettings]    = useState(_optionalChain([saved, 'optionalAccess', _20 => _20.settings])||DEF_SETTINGS);
@@ -1991,6 +2116,8 @@ function App() {
   const [showMenu,    setShowMenu]    = useState(false);
   const {confirm:showConfirm, Dialog:ConfirmDialog} = useConfirm();
   const [lastColor,   setLastColor]   = useState(_optionalChain([saved, 'optionalAccess', _24 => _24.lastColor])||CARD_COLORS[0]);
+  const [isPremium,   setIsPremium]   = useState(()=>!!getStoredLicense()?.valid);
+  const [showLicense, setShowLicense] = useState(false);
 
   const game = games.find(g=>g.id===currentId)||games[0];
   const ds   = useMemo(()=>new Set(game.drawn),[game.drawn]);
@@ -2112,11 +2239,28 @@ function App() {
           borderBottom:`1px solid ${navBrd}`,padding:"9px 12px",
           display:"flex",alignItems:"center",gap:7,
           boxShadow:lm?"0 2px 10px rgba(0,0,0,.07)":"0 2px 20px rgba(0,0,0,.4)"},}
-          , React.createElement('span', { style: {fontFamily:"'Fredoka One',cursive",fontSize:21,letterSpacing:2.5,flex:1,
-            background:"linear-gradient(135deg,#f5c518 0%,#ff4fa3 50%,#00e5ff 100%)",
-            WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text",
-            filter:lm?"drop-shadow(0 1px 1px rgba(0,0,0,.08))":"none",
-            animation:"logoPulse 3s ease-in-out infinite"},}, "🎱 Quinéo")
+          , React.createElement('div', { style: {display:"flex",alignItems:"center",gap:7,flex:1,minWidth:0},}
+            , React.createElement('div', { style: {width:24,height:24,borderRadius:"50%",flexShrink:0,
+                background:"radial-gradient(circle at 32% 26%,rgba(255,255,255,.18),transparent 45%),radial-gradient(circle at 70% 75%,rgba(0,0,0,.3),transparent 60%),linear-gradient(150deg,#2a2550,#0f0c29)",
+                display:"flex",alignItems:"center",justifyContent:"center",
+                boxShadow:"0 2px 6px rgba(0,0,0,.4)",position:"relative"},}
+              , React.createElement('div', { style: {width:13,height:13,borderRadius:"50%",
+                  background:"radial-gradient(circle at 35% 30%,#fff,#f1f1f4 70%)",
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  fontFamily:"'Fredoka One',cursive",fontSize:5.5,fontWeight:900,color:"#1a1830"},}, "42")
+            )
+            , React.createElement('span', { style: {fontFamily:"'Fredoka One',cursive",fontSize:21,letterSpacing:2.5,
+                background:"linear-gradient(135deg,#f5c518 0%,#ff4fa3 50%,#00e5ff 100%)",
+                WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text",
+                filter:lm?"drop-shadow(0 1px 1px rgba(0,0,0,.08))":"none",
+                animation:"logoPulse 3s ease-in-out infinite",flexShrink:0},}, "Quinéo")
+            , !isPremium&&React.createElement('button', { onClick: ()=>setShowLicense(true),
+                style: {fontSize:9,fontWeight:800,padding:"2px 7px",borderRadius:99,cursor:"pointer",
+                  background:lm?"rgba(0,0,0,.05)":"rgba(255,255,255,.08)",
+                  border:`1px solid ${lm?"#e5e7eb":"rgba(255,255,255,.15)"}`,
+                  color:lm?"#9ca3af":"rgba(255,255,255,.4)",letterSpacing:.3,
+                  whiteSpace:"nowrap",flexShrink:0,WebkitTapHighlightColor:"transparent"},}, "Gratuit")
+          )
           /* Menu "..." */
           , React.createElement('div', { style: {position:"relative"},}
             , React.createElement('button', { onClick: ()=>setShowMenu(m=>!m),
@@ -2135,7 +2279,8 @@ function App() {
                    ["📊","Statistiques",()=>{setShowStats(true);setShowMenu(false);}],
                    [null,null,null],
                    ["🎮","Changer de partie",()=>{setShowGameMgr(true);setShowMenu(false);}],
-                   ["⚙️","Réglages",()=>{setShowSettings(true);setShowMenu(false);}]
+                   ["⚙️","Réglages",()=>{setShowSettings(true);setShowMenu(false);}],
+                   ...(!isPremium ? [[null,null,null],["✨","Passer Premium",()=>{setShowLicense(true);setShowMenu(false);}]] : [])
                   ].map(([ic,lb,fn],i)=>ic===null
                     ? React.createElement('div', { key: i, style: {height:1,background:lm?"#e5e7eb":"rgba(255,255,255,.08)",margin:"4px 0"},})
                     :
@@ -2171,8 +2316,11 @@ function App() {
                   onToggleActive: toggleActive,
                   onEdit: c=>{setEditCard(c);setShowEditor(true);},
                   markerId: settings.marker, markerColor: settings.markerColor,
-                  onAdd: ()=>{setEditCard(null);setShowEditor(true);},
-                  onScan: ()=>setShowScanner(true),
+                  onAdd: ()=>{
+                    if (!isPremium && activeCards.length>=FREE_CARD_LIMIT) { showConfirm(`Limite gratuite atteinte (${FREE_CARD_LIMIT} cartons).\nPassez Premium pour des cartons illimités !`).then(ok=>{if(ok)setShowLicense(true);}); return; }
+                    setEditCard(null);setShowEditor(true);
+                  },
+                  onScan: ()=>{ if(!isPremium){setShowLicense(true);return;} setShowScanner(true); },
                   lm: lm, onToggle: toggleCell,})
               )
               /* ═══ NUMPAD FIXÉ EN BAS ═══ */
@@ -2180,8 +2328,11 @@ function App() {
                 mode: mode, setMode: setMode,
                 onToggle: toggleCell,
                 drawn: game.drawn,
-                onAdd: ()=>{setEditCard(null);setShowEditor(true);},
-                onScan: ()=>setShowScanner(true),
+                onAdd: ()=>{
+                  if (!isPremium && activeCards.length>=FREE_CARD_LIMIT) { showConfirm(`Limite gratuite atteinte (${FREE_CARD_LIMIT} cartons).\nPassez Premium pour des cartons illimités !`).then(ok=>{if(ok)setShowLicense(true);}); return; }
+                  setEditCard(null);setShowEditor(true);
+                },
+                onScan: ()=>{ if(!isPremium){setShowLicense(true);return;} setShowScanner(true); },
                 onShowHistory: ()=>setShowHistory(true),
                 hasCards: activeCards.length>0,
                 onUndo: ()=>upd(game.id,g=>({drawn:g.drawn.slice(0,-1)})),})
@@ -2335,6 +2486,8 @@ function App() {
         /* MODALS */
         , showEditor  &&React.createElement(CardEditor, {  card: editCard, defaultColor: lastColor, onSave: editCard?saveCard:addCard, onCancel: ()=>{setShowEditor(false);setEditCard(null);}, onDelete: delCard, onPlay: ()=>{setShowEditor(false);setEditCard(null);}, lm: lm,})
         , showScanner &&React.createElement(ScannerModal, { onSaveCards: importScanned, onCancel: ()=>setShowScanner(false), lm: lm,})
+        , showLicense &&React.createElement(LicenseModal, { lm: lm, onClose: ()=>setShowLicense(false),
+            onActivated: ()=>{setIsPremium(true);setShowLicense(false);},})
         , showSettings&&React.createElement(SettingsModal, { settings: settings, onSave: saveSets, onClose: ()=>setShowSettings(false),
           onClearTokensGlobal: ()=>clearTokens(game.id),
           onDeleteCardsGlobal: async ()=>{if(await showConfirm("Supprimer TOUS les cartons ?\nCette action est irréversible.")){upd(game.id,g=>({cards:[],drawn:[]}));setWinnerIds(new Set());}},

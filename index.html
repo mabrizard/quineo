@@ -2207,6 +2207,55 @@ function AdminPanel({adminKey, lm}) {
   );
 }
 
+function ContactModal({onClose, lm}) {
+  const [name, setName] = React.useState('');
+  const [email, setEmail] = React.useState('');
+  const [message, setMessage] = React.useState('');
+  const [status, setStatus] = React.useState('idle'); // idle | sending | ok | err
+  const inputStyle = {width:'100%',padding:'12px',borderRadius:10,border:`1.5px solid ${lm?'#d1d5db':'rgba(255,255,255,.2)'}`,background:lm?'#f9fafb':'rgba(255,255,255,.07)',color:lm?'#1e293b':'#fff',fontSize:16,fontFamily:"'Nunito',sans-serif",boxSizing:'border-box',outline:'none'};
+  const send = async () => {
+    if (!name.trim() || !message.trim()) return;
+    setStatus('sending');
+    try {
+      const res = await fetch('/api/contact', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,email,message})});
+      setStatus(res.ok ? 'ok' : 'err');
+    } catch(e) { setStatus('err'); }
+  };
+  return React.createElement('div', {style:{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,.6)',display:'flex',alignItems:'center',justifyContent:'center',padding:'20px',boxSizing:'border-box'}},
+    React.createElement('div', {style:{background:lm?'#fff':'#1e1b4b',borderRadius:20,padding:'28px 24px',width:'100%',maxWidth:400,boxShadow:'0 20px 60px rgba(0,0,0,.4)',display:'flex',flexDirection:'column',gap:14}},
+      React.createElement('div', {style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}},
+        React.createElement('span', {style:{fontFamily:"'Fredoka One',cursive",fontSize:22,color:lm?'#1e293b':'#f5c518'}}, '✉️ Nous contacter'),
+        React.createElement('button', {onClick:onClose,style:{background:'none',border:'none',fontSize:24,cursor:'pointer',color:lm?'#6b7280':'rgba(255,255,255,.5)',lineHeight:1}}, '×')
+      ),
+      status==='ok'
+        ? React.createElement('div', {style:{textAlign:'center',padding:'20px 0'}},
+            React.createElement('div', {style:{fontSize:48}}, '✅'),
+            React.createElement('p', {style:{color:lm?'#1e293b':'#fff',fontFamily:"'Nunito',sans-serif",fontSize:17,fontWeight:700,margin:'12px 0 4px'}}, 'Message envoyé !'),
+            React.createElement('p', {style:{color:lm?'#6b7280':'rgba(255,255,255,.6)',fontFamily:"'Nunito',sans-serif",fontSize:14,margin:0}}, 'Nous vous répondrons dès que possible.'),
+            React.createElement('button', {onClick:onClose,style:{marginTop:20,padding:'12px 28px',borderRadius:10,background:'#6c63ff',color:'#fff',border:'none',fontSize:16,fontFamily:"'Nunito',sans-serif",fontWeight:700,cursor:'pointer'}}, 'Fermer')
+          )
+        : React.createElement(React.Fragment, null,
+            React.createElement('div', null,
+              React.createElement('label', {style:{display:'block',marginBottom:6,fontFamily:"'Nunito',sans-serif",fontWeight:700,fontSize:14,color:lm?'#374151':'rgba(255,255,255,.8)'}}, 'Votre nom *'),
+              React.createElement('input', {type:'text',value:name,onChange:e=>setName(e.target.value),placeholder:'Ex : Marie Dupont',style:inputStyle})
+            ),
+            React.createElement('div', null,
+              React.createElement('label', {style:{display:'block',marginBottom:6,fontFamily:"'Nunito',sans-serif",fontWeight:700,fontSize:14,color:lm?'#374151':'rgba(255,255,255,.8)'}}, 'Votre email (pour vous répondre)'),
+              React.createElement('input', {type:'email',value:email,onChange:e=>setEmail(e.target.value),placeholder:'Ex : marie@exemple.fr',style:inputStyle})
+            ),
+            React.createElement('div', null,
+              React.createElement('label', {style:{display:'block',marginBottom:6,fontFamily:"'Nunito',sans-serif",fontWeight:700,fontSize:14,color:lm?'#374151':'rgba(255,255,255,.8)'}}, 'Votre message *'),
+              React.createElement('textarea', {value:message,onChange:e=>setMessage(e.target.value),placeholder:'Votre question ou suggestion...',rows:4,style:{...inputStyle,resize:'vertical'}})
+            ),
+            status==='err'&&React.createElement('p', {style:{color:'#ef4444',fontFamily:"'Nunito',sans-serif",fontSize:14,margin:0,textAlign:'center'}}, "Une erreur s'est produite. Réessayez ou écrivez à mabrizard@gmail.com"),
+            React.createElement('button', {onClick:send,disabled:status==='sending'||!name.trim()||!message.trim(),
+              style:{padding:'14px',borderRadius:12,background:'#6c63ff',color:'#fff',border:'none',fontSize:17,fontFamily:"'Nunito',sans-serif",fontWeight:800,cursor:'pointer',opacity:(status==='sending'||!name.trim()||!message.trim())?0.6:1}},
+              status==='sending'?'Envoi en cours…':'Envoyer le message')
+          )
+    )
+  );
+}
+
 function App() {
   const saved = load();
   const [settings,    setSettings]    = useState(_optionalChain([saved, 'optionalAccess', _20 => _20.settings])||DEF_SETTINGS);
@@ -2229,6 +2278,7 @@ function App() {
   const [lastColor,   setLastColor]   = useState(_optionalChain([saved, 'optionalAccess', _24 => _24.lastColor])||CARD_COLORS[0]);
   const [isPremium,   setIsPremium]   = useState(()=>!!getStoredLicense()?.valid);
   const [showLicense, setShowLicense] = useState(false);
+  const [showContact, setShowContact] = useState(false);
 
   const game = games.find(g=>g.id===currentId)||games[0];
   const ds   = useMemo(()=>new Set(game.drawn),[game.drawn]);
@@ -2391,6 +2441,8 @@ function App() {
                    [null,null,null],
                    ["🎮","Changer de partie",()=>{setShowGameMgr(true);setShowMenu(false);}],
                    ["⚙️","Réglages",()=>{setShowSettings(true);setShowMenu(false);}],
+                   [null,null,null],
+                   ["✉️","Nous contacter",()=>{setShowContact(true);setShowMenu(false);}],
                    ...(!isPremium ? [[null,null,null],["✨","Passer Premium",()=>{setShowLicense(true);setShowMenu(false);}]] : [])
                   ].map(([ic,lb,fn],i)=>ic===null
                     ? React.createElement('div', { key: i, style: {height:1,background:lm?"#e5e7eb":"rgba(255,255,255,.08)",margin:"4px 0"},})
@@ -2597,6 +2649,7 @@ function App() {
         /* MODALS */
         , showEditor  &&React.createElement(CardEditor, {  card: editCard, defaultColor: lastColor, onSave: editCard?saveCard:addCard, onCancel: ()=>{setShowEditor(false);setEditCard(null);}, onDelete: delCard, onPlay: ()=>{setShowEditor(false);setEditCard(null);}, lm: lm,})
         , showScanner &&React.createElement(ScannerModal, { onSaveCards: importScanned, onCancel: ()=>setShowScanner(false), lm: lm,})
+        , showContact &&React.createElement(ContactModal, { lm: lm, onClose: ()=>setShowContact(false)})
         , showLicense &&React.createElement(LicenseModal, { lm: lm, onClose: ()=>setShowLicense(false),
             onActivated: ()=>{setIsPremium(true);setShowLicense(false);},})
         , showSettings&&React.createElement(SettingsModal, { settings: settings, onSave: saveSets, onClose: ()=>setShowSettings(false),

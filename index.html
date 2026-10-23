@@ -2096,6 +2096,117 @@ function LicenseModal({onClose, onActivated, lm}) {
   );
 }
 
+
+// ─── ADMIN PANEL ─────────────────────────────────────────────────
+function AdminPanel({adminKey, lm}) {
+  const [codes, setCodes]       = useState([]);
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState(null);
+  const [copied, setCopied]     = useState(null);
+
+  const generate = async (n=1) => {
+    setLoading(true); setError(null);
+    try {
+      const results = [];
+      for (let i=0; i<n; i++) {
+        const res = await fetch("/api/verify-license", {
+          method:"POST",
+          headers:{"Content-Type":"application/json","x-admin-key":adminKey},
+          body: JSON.stringify({action:"generate", source:"admin-panel"})
+        });
+        const data = await res.json();
+        if (data.code) results.push(data.code);
+        else setError(data.error || "Erreur");
+      }
+      setCodes(prev => [...results, ...prev]);
+    } catch(e) { setError(e.message); }
+    finally { setLoading(false); }
+  };
+
+  const copy = (code) => {
+    navigator.clipboard?.writeText(code).then(()=>{
+      setCopied(code);
+      setTimeout(()=>setCopied(null), 2000);
+    }).catch(()=>{
+      // fallback for older browsers
+      const el = document.createElement('textarea');
+      el.value = code;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+      setCopied(code);
+      setTimeout(()=>setCopied(null), 2000);
+    });
+  };
+
+  const bg = "#0f0c29";
+  return React.createElement('div', {style:{minHeight:"100dvh",background:bg,
+    padding:"24px 16px",fontFamily:"'Nunito',sans-serif",color:"#fff"}},
+    React.createElement('div', {style:{maxWidth:500,margin:"0 auto"}},
+
+      // Header
+      React.createElement('div', {style:{textAlign:"center",marginBottom:28}},
+        React.createElement('div', {style:{fontFamily:"'Fredoka One',cursive",fontSize:28,
+          background:"linear-gradient(135deg,#f5c518,#ff4fa3)",
+          WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",
+          backgroundClip:"text",marginBottom:4}}, "🎱 Quinéo Admin"),
+        React.createElement('div', {style:{fontSize:12,color:"rgba(255,255,255,.4)"}},
+          "Génération de codes de licence")
+      ),
+
+      // Buttons
+      React.createElement('div', {style:{display:"flex",gap:10,marginBottom:20}},
+        React.createElement('button', {
+          onClick:()=>generate(1), disabled:loading,
+          style:{flex:1,padding:"14px",borderRadius:12,border:"none",cursor:"pointer",
+            background:"linear-gradient(135deg,#f5c518,#ff6d00)",
+            color:"#000",fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:15,
+            opacity:loading?.6:1}},
+          loading?"⏳ Génération…":"✨ Générer 1 code"),
+        React.createElement('button', {
+          onClick:()=>generate(5), disabled:loading,
+          style:{flex:1,padding:"14px",borderRadius:12,border:"none",cursor:"pointer",
+            background:"linear-gradient(135deg,#ff4fa3,#9c27b0)",
+            color:"#fff",fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:15,
+            opacity:loading?.6:1}},
+          loading?"⏳…":"✨ Générer 5 codes")
+      ),
+
+      // Error
+      error && React.createElement('div', {style:{background:"rgba(239,68,68,.15)",
+        border:"1px solid rgba(239,68,68,.4)",borderRadius:10,padding:"10px 14px",
+        color:"#f87171",fontSize:13,marginBottom:16}}, "⚠️ ", error),
+
+      // Codes list
+      codes.length > 0 && React.createElement('div', null,
+        React.createElement('div', {style:{fontSize:11,color:"rgba(255,255,255,.35)",
+          letterSpacing:1.5,textTransform:"uppercase",marginBottom:10,fontWeight:700}},
+          `${codes.length} code${codes.length>1?"s":""} généré${codes.length>1?"s":""}`),
+        codes.map((code,i) =>
+          React.createElement('div', {key:i,
+            style:{display:"flex",alignItems:"center",gap:10,
+              background:"rgba(255,255,255,.07)",border:"1px solid rgba(255,255,255,.12)",
+              borderRadius:10,padding:"12px 14px",marginBottom:8}},
+            React.createElement('span', {style:{flex:1,fontFamily:"'Fredoka One',cursive",
+              fontSize:16,letterSpacing:1,color:"#f5c518"}}, code),
+            React.createElement('button', {onClick:()=>copy(code),
+              style:{padding:"6px 14px",borderRadius:8,border:"none",cursor:"pointer",
+                background:copied===code?"#16a34a":"rgba(255,255,255,.1)",
+                color:"#fff",fontWeight:700,fontSize:12,transition:"background .2s"}},
+              copied===code?"✓ Copié !":"Copier")
+          )
+        )
+      ),
+
+      // Empty state
+      codes.length === 0 && !loading && React.createElement('div', {
+        style:{textAlign:"center",padding:"40px 0",color:"rgba(255,255,255,.25)",fontSize:14}},
+        "Les codes générés apparaîtront ici")
+    )
+  );
+}
+
 function App() {
   const saved = load();
   const [settings,    setSettings]    = useState(_optionalChain([saved, 'optionalAccess', _20 => _20.settings])||DEF_SETTINGS);
@@ -2502,7 +2613,19 @@ function App() {
 
 // Mount app
 const __root = ReactDOM.createRoot(document.getElementById('root'));
-__root.render(React.createElement(App));
+// Check for admin mode via URL param
+const urlParams = new URLSearchParams(window.location.search);
+const adminKey = urlParams.get('admin');
+const ADMIN_SECRET = "3a78ef1c1c915fff38135fc6aee869218ef3dedbf92ed58c";
+
+if (adminKey === ADMIN_SECRET) {
+  // Hide splash immediately in admin mode
+  const sp = document.getElementById('splash');
+  if (sp) sp.style.display = 'none';
+  __root.render(React.createElement(AdminPanel, {adminKey: adminKey, lm: true}));
+} else {
+  __root.render(React.createElement(App));
+}
 
 // Splash: attendre 2 secondes minimum puis fondu
 const sp = document.getElementById('splash');

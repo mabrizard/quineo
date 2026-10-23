@@ -10,7 +10,7 @@ export default async function handler(req) {
   if (!RESEND_KEY) return new Response(JSON.stringify({ok:false,error:'Config manquante'}), {status:500,headers:{'Content-Type':'application/json'}});
 
   const body = {
-    from: 'Quinéo Contact <contact@quineo.fr>',
+    from: 'Quinéo Contact <onboarding@resend.dev>',
     to: ['mabrizard@gmail.com'],
     reply_to: email || undefined,
     subject: `[Quinéo] Message de ${name}`,

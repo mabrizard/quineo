@@ -1,107 +1,133 @@
-// Stockage simple via Vercel KV (Redis) — à activer plus tard
-// Pour l'instant : stockage en mémoire de fallback (perdu à chaque redeploy)
-// TODO: remplacer par Vercel KV quand le compte sera configuré
+export const config = { runtime: 'edge' };
 
-export const config = {
-  api: { bodyParser: { sizeLimit: '1mb' } },
-};
-
-// ⚠️ TEMPORAIRE : stockage en mémoire (non persistant entre déploiements)
-// À remplacer par Vercel KV / Upstash Redis pour la production
-const MEMORY_STORE = globalThis.__quineoLicenses || (globalThis.__quineoLicenses = new Map());
-
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
 const MAX_DEVICES = 3;
 
+async function db(path, method='GET', body=null) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method,
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': method==='POST' ? 'return=representation' : (method==='PATCH' ? 'return=representation' : ''),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) { const e = await res.text(); throw new Error(e); }
+  return res.status === 204 ? null : res.json();
+}
+
 function generateCode() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sans I,O,0,1 pour éviter confusion
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const part = () => Array.from({length:4},()=>chars[Math.floor(Math.random()*chars.length)]).join('');
   return `QUINEO-${part()}-${part()}-${part()}`;
 }
 
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+export default async function handler(req) {
+  const headers = {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, x-admin-key',
+  };
+  if (req.method === 'OPTIONS') return new Response(null, {status:200,headers});
+  if (req.method !== 'POST') return new Response('Method not allowed', {status:405});
 
-  const { action, code, fingerprint } = req.body || {};
+  const body = await req.json();
+  const { action, code, fingerprint } = body;
+  const adminKey = req.headers.get('x-admin-key');
+  const isAdmin = adminKey === process.env.ADMIN_SECRET_KEY;
 
   try {
-    // ── Action: vérifier / activer un code ──
+    // ── VERIFY : activer / vérifier un code (permanent ou early adopter) ──
     if (action === 'verify') {
-      if (!code || !fingerprint) {
-        return res.status(400).json({ valid: false, error: 'Code et fingerprint requis' });
-      }
-
+      if (!code || !fingerprint) return new Response(JSON.stringify({valid:false,error:'Paramètres manquants'}), {status:400,headers});
       const normalized = code.trim().toUpperCase();
-      const license = MEMORY_STORE.get(normalized);
 
-      if (!license) {
-        return res.status(404).json({ valid: false, error: 'Code invalide ou inexistant' });
+      // 1. Chercher dans les codes permanents
+      const perms = await db(`licenses_permanent?code=eq.${encodeURIComponent(normalized)}&select=*`);
+      if (perms?.length > 0) {
+        const lic = perms[0];
+        if (lic.revoked) return new Response(JSON.stringify({valid:false,error:'Ce code a été désactivé'}), {status:403,headers});
+        const fps = lic.fingerprints || [];
+        if (fps.includes(fingerprint)) return new Response(JSON.stringify({valid:true,type:'permanent',message:'Licence active'}), {headers});
+        if (fps.length >= MAX_DEVICES) return new Response(JSON.stringify({valid:false,error:`Limite de ${MAX_DEVICES} appareils atteinte`}), {status:403,headers});
+        await db(`licenses_permanent?code=eq.${encodeURIComponent(normalized)}`, 'PATCH', {fingerprints:[...fps,fingerprint],last_used:new Date().toISOString()});
+        return new Response(JSON.stringify({valid:true,type:'permanent',message:`Activé (${fps.length+1}/${MAX_DEVICES} appareils)`}), {headers});
       }
 
-      if (license.revoked) {
-        return res.status(403).json({ valid: false, error: 'Ce code a été désactivé' });
+      // 2. Chercher dans les early adopters
+      const eas = await db(`early_adopters?code=eq.${encodeURIComponent(normalized)}&select=*`);
+      if (eas?.length > 0) {
+        const ea = eas[0];
+        // Vérifier expiration
+        if (new Date(ea.expires_at) < new Date()) {
+          return new Response(JSON.stringify({valid:false,error:'Ce code Pionnier a expiré. Passez à la version Premium pour continuer.'}), {status:403,headers});
+        }
+        // Marquer comme activé
+        if (!ea.activated) {
+          await db(`early_adopters?code=eq.${encodeURIComponent(normalized)}`, 'PATCH', {activated:true,activated_at:new Date().toISOString(),fingerprint});
+        }
+        const expDate = new Date(ea.expires_at).toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'});
+        return new Response(JSON.stringify({valid:true,type:'early_adopter',expiresAt:ea.expires_at,message:`Accès Pionnier valide jusqu'au ${expDate}`}), {headers});
       }
 
-      // Already activated on this device
-      if (license.fingerprints.includes(fingerprint)) {
-        return res.status(200).json({ valid: true, message: 'Licence déjà active sur cet appareil' });
-      }
-
-      // New device - check limit
-      if (license.fingerprints.length >= MAX_DEVICES) {
-        return res.status(403).json({
-          valid: false,
-          error: `Ce code a atteint sa limite de ${MAX_DEVICES} appareils. Contactez le support si besoin.`
-        });
-      }
-
-      // Activate on this new device
-      license.fingerprints.push(fingerprint);
-      license.lastUsed = new Date().toISOString();
-      MEMORY_STORE.set(normalized, license);
-
-      return res.status(200).json({
-        valid: true,
-        message: `Licence activée (${license.fingerprints.length}/${MAX_DEVICES} appareils)`
-      });
+      return new Response(JSON.stringify({valid:false,error:'Code invalide ou inexistant'}), {status:404,headers});
     }
 
-    // ── Action: générer un nouveau code (admin only, protégé par clé secrète) ──
+    // ── GENERATE : créer un code permanent (admin) ──
     if (action === 'generate') {
-      const adminKey = req.headers['x-admin-key'];
-      if (adminKey !== process.env.ADMIN_SECRET_KEY) {
-        return res.status(401).json({ error: 'Non autorisé' });
-      }
-
+      if (!isAdmin) return new Response(JSON.stringify({error:'Non autorisé'}), {status:401,headers});
       let newCode = generateCode();
-      while (MEMORY_STORE.has(newCode)) newCode = generateCode(); // avoid collision
-
-      MEMORY_STORE.set(newCode, {
-        createdAt: new Date().toISOString(),
-        fingerprints: [],
-        revoked: false,
-        source: req.body.source || 'manual',
-      });
-
-      return res.status(200).json({ code: newCode });
-    }
-
-    // ── Action: lister les codes (debug admin) ──
-    if (action === 'list') {
-      const adminKey = req.headers['x-admin-key'];
-      if (adminKey !== process.env.ADMIN_SECRET_KEY) {
-        return res.status(401).json({ error: 'Non autorisé' });
+      let attempts = 0;
+      while (attempts < 5) {
+        const clash = await db(`licenses_permanent?code=eq.${newCode}&select=code`);
+        if (!clash?.length) break;
+        newCode = generateCode();
+        attempts++;
       }
-      const all = Array.from(MEMORY_STORE.entries()).map(([code, data]) => ({ code, ...data }));
-      return res.status(200).json({ licenses: all, count: all.length });
+      await db('licenses_permanent', 'POST', {code:newCode,created_at:new Date().toISOString(),fingerprints:[],revoked:false,source:body.source||'admin'});
+      return new Response(JSON.stringify({code:newCode}), {headers});
     }
 
-    return res.status(400).json({ error: 'Action inconnue' });
+    // ── LIST : lister tous les codes (admin) ──
+    if (action === 'list') {
+      if (!isAdmin) return new Response(JSON.stringify({error:'Non autorisé'}), {status:401,headers});
+      const perms = await db('licenses_permanent?select=*&order=created_at.desc') || [];
+      const eas = await db('early_adopters?select=*&order=created_at.desc') || [];
+      // Récupérer le statut ON/OFF
+      const settings = await db('ea_settings?key=eq.early_adopters_open&select=value');
+      const earlyOpen = settings?.[0]?.value === 'true';
+      return new Response(JSON.stringify({licenses:perms,earlyAdopters:eas,earlyOpen,count:perms.length,earlyCount:eas.length}), {headers});
+    }
 
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
+    // ── CHECK_EARLY_STATUS : vérifier si inscriptions ouvertes (public) ──
+    if (action === 'check_early_status') {
+      const settings = await db('ea_settings?key=eq.early_adopters_open&select=value');
+      const earlyOpen = settings?.[0]?.value === 'true';
+      return new Response(JSON.stringify({earlyOpen}), {headers});
+    }
+
+    // ── TOGGLE : activer/désactiver les inscriptions early adopters (admin) ──
+    if (action === 'toggle_early') {
+      if (!isAdmin) return new Response(JSON.stringify({error:'Non autorisé'}), {status:401,headers});
+      const {open} = body;
+      // Upsert dans ea_settings (on=conflict pour éviter doublons)
+      await db('ea_settings?on_conflict=key', 'POST', {key:'early_adopters_open',value:open?'true':'false'});
+      return new Response(JSON.stringify({ok:true,earlyOpen:open}), {headers});
+    }
+
+    // ── REVOKE : révoquer un code permanent (admin) ──
+    if (action === 'revoke') {
+      if (!isAdmin) return new Response(JSON.stringify({error:'Non autorisé'}), {status:401,headers});
+      await db(`licenses_permanent?code=eq.${encodeURIComponent(body.code)}`, 'PATCH', {revoked:true});
+      return new Response(JSON.stringify({ok:true}), {headers});
+    }
+
+    return new Response(JSON.stringify({error:'Action inconnue'}), {status:400,headers});
+  } catch(e) {
+    return new Response(JSON.stringify({error:e.message}), {status:500,headers});
   }
 }

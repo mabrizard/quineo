@@ -2618,11 +2618,40 @@ const urlParams = new URLSearchParams(window.location.search);
 const adminKey = urlParams.get('admin');
 const ADMIN_SECRET = "3a78ef1c1c915fff38135fc6aee869218ef3dedbf92ed58c";
 
-if (adminKey === ADMIN_SECRET) {
-  // Hide splash immediately in admin mode
+function AdminLogin({onSuccess}) {
+  const [pwd, setPwd] = React.useState('');
+  const [err, setErr] = React.useState(false);
+  const check = () => {
+    if (pwd === ADMIN_SECRET) { onSuccess(); }
+    else { setErr(true); setPwd(''); setTimeout(()=>setErr(false),2000); }
+  };
+  return React.createElement('div', {style:{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100vh',background:'#1a1a2e',gap:'16px'}},
+    React.createElement('div', {style:{fontSize:'32px'}}, '🔒'),
+    React.createElement('p', {style:{color:'#ccc',margin:0,fontFamily:'sans-serif'}}, 'Accès administration'),
+    React.createElement('input', {
+      type:'password', value:pwd, placeholder:'Mot de passe',
+      autoFocus:true,
+      onChange:e=>setPwd(e.target.value),
+      onKeyDown:e=>e.key==='Enter'&&check(),
+      style:{padding:'10px 16px',borderRadius:'8px',border:err?'2px solid #ff4d4d':'2px solid #444',background:'#2a2a3e',color:'#fff',fontSize:'16px',outline:'none',width:'220px',boxSizing:'border-box'}
+    }),
+    React.createElement('button', {onClick:check, style:{padding:'10px 24px',borderRadius:'8px',background:'#6c63ff',color:'#fff',border:'none',fontSize:'16px',cursor:'pointer'}}, 'Entrer'),
+    err && React.createElement('p', {style:{color:'#ff4d4d',margin:0,fontFamily:'sans-serif',fontSize:'14px'}}, 'Mot de passe incorrect')
+  );
+}
+
+if (urlParams.get('admin') !== null) {
+  // Admin mode : afficher le login d'abord
   const sp = document.getElementById('splash');
   if (sp) sp.style.display = 'none';
-  __root.render(React.createElement(AdminPanel, {adminKey: adminKey, lm: true}));
+  let unlocked = adminKey === ADMIN_SECRET; // déjà déverrouillé si clé dans l'URL
+  const renderAdmin = () => {
+    __root.render(React.createElement(AdminPanel, {adminKey: ADMIN_SECRET, lm: true}));
+  };
+  const renderLogin = () => {
+    __root.render(React.createElement(AdminLogin, {onSuccess: renderAdmin}));
+  };
+  if (unlocked) renderAdmin(); else renderLogin();
 } else {
   __root.render(React.createElement(App));
 }

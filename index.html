@@ -2621,9 +2621,21 @@ const ADMIN_SECRET = "3a78ef1c1c915fff38135fc6aee869218ef3dedbf92ed58c";
 function AdminLogin({onSuccess}) {
   const [pwd, setPwd] = React.useState('');
   const [err, setErr] = React.useState(false);
-  const check = () => {
-    if (pwd === ADMIN_SECRET || pwd === "Quineo2026!") { onSuccess(); }
-    else { setErr(true); setPwd(''); setTimeout(()=>setErr(false),2000); }
+  const [loading, setLoading] = React.useState(false);
+  const check = async () => {
+    if (!pwd) return;
+    setLoading(true);
+    try {
+      const res = await fetch('/api/admin-auth', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({password: pwd})
+      });
+      if (res.ok) { onSuccess(); }
+      else { setErr(true); setPwd(''); setTimeout(()=>setErr(false),2000); }
+    } catch(e) {
+      setErr(true); setPwd(''); setTimeout(()=>setErr(false),2000);
+    } finally { setLoading(false); }
   };
   return React.createElement('div', {style:{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100vh',background:'#1a1a2e',gap:'16px'}},
     React.createElement('div', {style:{fontSize:'32px'}}, '🔒'),
@@ -2635,7 +2647,7 @@ function AdminLogin({onSuccess}) {
       onKeyDown:e=>e.key==='Enter'&&check(),
       style:{padding:'10px 16px',borderRadius:'8px',border:err?'2px solid #ff4d4d':'2px solid #444',background:'#2a2a3e',color:'#fff',fontSize:'16px',outline:'none',width:'220px',boxSizing:'border-box'}
     }),
-    React.createElement('button', {onClick:check, style:{padding:'10px 24px',borderRadius:'8px',background:'#6c63ff',color:'#fff',border:'none',fontSize:'16px',cursor:'pointer'}}, 'Entrer'),
+    React.createElement('button', {onClick:check, disabled:loading, style:{padding:'10px 24px',borderRadius:'8px',background:'#6c63ff',color:'#fff',border:'none',fontSize:'16px',cursor:loading?'not-allowed':'pointer',opacity:loading?0.7:1}}, loading?'Vérification…':'Entrer'),
     err && React.createElement('p', {style:{color:'#ff4d4d',margin:0,fontFamily:'sans-serif',fontSize:'14px'}}, 'Mot de passe incorrect')
   );
 }
@@ -2644,14 +2656,10 @@ if (urlParams.get('admin') !== null) {
   // Admin mode : afficher le login d'abord
   const sp = document.getElementById('splash');
   if (sp) sp.style.display = 'none';
-  let unlocked = adminKey === ADMIN_SECRET; // déjà déverrouillé si clé dans l'URL
   const renderAdmin = () => {
     __root.render(React.createElement(AdminPanel, {adminKey: ADMIN_SECRET, lm: true}));
   };
-  const renderLogin = () => {
-    __root.render(React.createElement(AdminLogin, {onSuccess: renderAdmin}));
-  };
-  if (unlocked) renderAdmin(); else renderLogin();
+  __root.render(React.createElement(AdminLogin, {onSuccess: renderAdmin}));
 } else {
   __root.render(React.createElement(App));
 }

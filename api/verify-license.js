@@ -114,8 +114,13 @@ export default async function handler(req) {
     if (action === 'toggle_early') {
       if (!isAdmin) return new Response(JSON.stringify({error:'Non autorisé'}), {status:401,headers});
       const {open} = body;
-      // Upsert dans ea_settings (on=conflict pour éviter doublons)
-      await db('ea_settings?on_conflict=key', 'POST', {key:'early_adopters_open',value:open?'true':'false'});
+      // Upsert dans ea_settings via PATCH (plus simple que upsert POST)
+      const existing = await db('ea_settings?key=eq.early_adopters_open&select=key');
+      if (existing?.length > 0) {
+        await db('ea_settings?key=eq.early_adopters_open', 'PATCH', {value:open?'true':'false'});
+      } else {
+        await db('ea_settings', 'POST', {key:'early_adopters_open',value:open?'true':'false'});
+      }
       return new Response(JSON.stringify({ok:true,earlyOpen:open}), {headers});
     }
 

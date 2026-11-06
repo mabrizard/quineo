@@ -181,6 +181,15 @@ export default async function handler(req) {
       last_used: null,
     });
 
+    // Enregistrer le client
+    await db('customers', 'POST', {
+      email,
+      name: name || null,
+      license_code: code,
+      stripe_session_id: stripeEventId,
+      created_at: new Date().toISOString(),
+    });
+
     // Envoyer l'email avec le code
     await sendPurchaseEmail(email, code, name);
 

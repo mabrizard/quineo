@@ -2020,6 +2020,60 @@ const dangerBs = lm => ({
 function mkGame(name) { return {id:uid(),name,cards:[],drawn:[],createdAt:Date.now()}; }
 
 
+// ─── UPGRADE MODAL : choix Pionnier ou Premium payant (pour utilisateurs gratuits) ──
+function UpgradeModal({onClose, onGoLicense, onGoEarly, earlyIsOpen, lm}) {
+  const shBg=lm?"#fff":"#1a1548", shBrd=lm?"#e5e7eb":"rgba(245,197,24,.2)";
+  return (
+    React.createElement('div', { style: {position:"fixed",inset:0,background:"rgba(0,0,0,.8)",zIndex:250,display:"flex",
+      alignItems:"flex-end",justifyContent:"center",backdropFilter:"blur(4px)"}, onClick: onClose,}
+      , React.createElement('div', { style: {background:shBg,border:`2px solid ${shBrd}`,borderRadius:"22px 22px 0 0",
+        padding:"12px 16px max(28px,env(safe-area-inset-bottom))",
+        width:"100%",maxWidth:600}, onClick: e=>e.stopPropagation(),}
+        , React.createElement('div', { style: {width:44,height:5,borderRadius:99,background:lm?"#e5e7eb":"rgba(255,255,255,.15)",margin:"0 auto 16px"},})
+        , React.createElement('div', { style: {textAlign:"center",marginBottom:20},}
+          , React.createElement('div', { style: {fontSize:38,marginBottom:8},}, "🔒")
+          , React.createElement('div', { style: {fontFamily:"'Fredoka One',cursive",fontSize:20,color:lm?"#1e293b":"#f5c518",marginBottom:6},}, "Fonctionnalité Premium")
+          , React.createElement('div', { style: {fontSize:13,color:lm?"#6b7280":"rgba(255,255,255,.5)",lineHeight:1.6},},
+            "Le scanner est réservé aux membres Premium. Choisissez votre accès :"
+          )
+        )
+        /* Option 1 : Pionnier gratuit */
+        , earlyIsOpen && React.createElement('button', {
+            onClick: ()=>{onClose();onGoEarly();},
+            style: {display:"block",width:"100%",textAlign:"left",background:lm?"#f5f3ff":"rgba(124,58,237,.12)",
+              border:`2px solid ${lm?"#c4b5fd":"rgba(167,139,250,.35)"}`,borderRadius:14,
+              padding:"14px 16px",marginBottom:10,cursor:"pointer"},}
+          , React.createElement('div', { style: {display:"flex",alignItems:"center",gap:10},}
+            , React.createElement('div', { style: {fontSize:28}}, "🚀")
+            , React.createElement('div', null
+              , React.createElement('div', { style: {fontFamily:"'Fredoka One',cursive",fontSize:15,color:lm?"#7c3aed":"#c4b5fd",marginBottom:2},}, "Accès Pionnier gratuit")
+              , React.createElement('div', { style: {fontSize:12,color:lm?"#6b7280":"rgba(255,255,255,.5)"},}, "30 jours Premium offerts — recevez votre code par email")
+            )
+          )
+        )
+        /* Option 2 : Acheter Premium */
+        , React.createElement('button', {
+            onClick: ()=>{onClose();onGoLicense();},
+            style: {display:"block",width:"100%",textAlign:"left",background:lm?"#fdf4ff":"rgba(245,197,24,.07)",
+              border:`2px solid ${lm?"#f0abfc":"rgba(245,197,24,.25)"}`,borderRadius:14,
+              padding:"14px 16px",marginBottom:16,cursor:"pointer"},}
+          , React.createElement('div', { style: {display:"flex",alignItems:"center",gap:10},}
+            , React.createElement('div', { style: {fontSize:28}}, "✨")
+            , React.createElement('div', null
+              , React.createElement('div', { style: {fontFamily:"'Fredoka One',cursive",fontSize:15,color:lm?"#a21caf":"#f5c518",marginBottom:2},}, "Passer Premium — 14,99€")
+              , React.createElement('div', { style: {fontSize:12,color:lm?"#6b7280":"rgba(255,255,255,.5)"},}, "Scanner illimité · Cartons sans limite · Accès à vie")
+            )
+          )
+        )
+        , React.createElement('button', { style: {display:"block",width:"100%",textAlign:"center",background:"none",border:"none",
+            fontSize:13,color:lm?"#9ca3af":"rgba(255,255,255,.3)",padding:"8px",cursor:"pointer"},
+            onClick: onClose,}, "Pas maintenant"
+        )
+      )
+    )
+  );
+}
+
 // ─── LICENSE MODAL ───────────────────────────────────────────────
 function LicenseModal({onClose, onActivated, lm, isPionnier}) {
   const [code, setCode] = useState("");
@@ -2441,6 +2495,7 @@ function App() {
   const [isPremium,   setIsPremium]   = useState(()=>!!getStoredLicense()?.valid);
   const [licenseType, setLicenseType] = useState(()=>getStoredLicense()?.type||null); // 'permanent' | 'early_adopter' | null
   const [showLicense, setShowLicense] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false); // modal choix Pionnier vs Premium
   const [showContact, setShowContact] = useState(false);
   const [showEarly,   setShowEarly]   = useState(false);
   const [earlyIsOpen, setEarlyIsOpen] = useState(false);
@@ -2657,7 +2712,7 @@ function App() {
                     if (!isPremium && activeCards.length>=FREE_CARD_LIMIT) { showConfirm(`Limite gratuite atteinte (${FREE_CARD_LIMIT} cartons).\nPassez Premium pour des cartons illimités !`).then(ok=>{if(ok)setShowLicense(true);}); return; }
                     setEditCard(null);setShowEditor(true);
                   },
-                  onScan: ()=>{ if(!isPremium){setShowLicense(true);return;} setShowScanner(true); },
+                  onScan: ()=>{ if(!isPremium){setShowUpgrade(true);return;} setShowScanner(true); },
                   lm: lm, onToggle: toggleCell,})
               )
               /* ═══ NUMPAD FIXÉ EN BAS ═══ */
@@ -2666,10 +2721,10 @@ function App() {
                 onToggle: toggleCell,
                 drawn: game.drawn,
                 onAdd: ()=>{
-                  if (!isPremium && activeCards.length>=FREE_CARD_LIMIT) { showConfirm(`Limite gratuite atteinte (${FREE_CARD_LIMIT} cartons).\nPassez Premium pour des cartons illimités !`).then(ok=>{if(ok)setShowLicense(true);}); return; }
+                  if (!isPremium && activeCards.length>=FREE_CARD_LIMIT) { showConfirm(`Limite gratuite atteinte (${FREE_CARD_LIMIT} cartons).\nPassez Premium pour des cartons illimités !`).then(ok=>{if(ok)setShowUpgrade(true);}); return; }
                   setEditCard(null);setShowEditor(true);
                 },
-                onScan: ()=>{ if(!isPremium){setShowLicense(true);return;} setShowScanner(true); },
+                onScan: ()=>{ if(!isPremium){setShowUpgrade(true);return;} setShowScanner(true); },
                 onShowHistory: ()=>setShowHistory(true),
                 hasCards: activeCards.length>0,
                 onUndo: ()=>upd(game.id,g=>({drawn:g.drawn.slice(0,-1)})),})
@@ -2825,6 +2880,11 @@ function App() {
         , showScanner &&React.createElement(ScannerModal, { onSaveCards: importScanned, onCancel: ()=>setShowScanner(false), lm: lm,})
         , showEarly   &&React.createElement(EarlyAdopterModal, { lm: lm, onClose: ()=>setShowEarly(false)})
         , showContact &&React.createElement(ContactModal, { lm: lm, onClose: ()=>setShowContact(false)})
+        , showUpgrade &&React.createElement(UpgradeModal, { lm: lm,
+            earlyIsOpen: earlyIsOpen,
+            onClose: ()=>setShowUpgrade(false),
+            onGoLicense: ()=>setShowLicense(true),
+            onGoEarly: ()=>setShowEarly(true),})
         , showLicense &&React.createElement(LicenseModal, { lm: lm, onClose: ()=>setShowLicense(false),
             isPionnier: licenseType==='early_adopter',
             onActivated: (type)=>{setIsPremium(true);setLicenseType(type||'permanent');setShowLicense(false);},})

@@ -2021,7 +2021,7 @@ function mkGame(name) { return {id:uid(),name,cards:[],drawn:[],createdAt:Date.n
 
 
 // ─── LICENSE MODAL ───────────────────────────────────────────────
-function LicenseModal({onClose, onActivated, lm}) {
+function LicenseModal({onClose, onActivated, lm, isPionnier}) {
   const [code, setCode] = useState("");
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState(null);
@@ -2040,9 +2040,9 @@ function LicenseModal({onClose, onActivated, lm}) {
       });
       const data = await res.json();
       if (data.valid) {
-        setStoredLicense({ valid:true, code: code.trim().toUpperCase(), activatedAt: new Date().toISOString() });
+        setStoredLicense({ valid:true, code: code.trim().toUpperCase(), type: data.type||'permanent', expiresAt: data.expiresAt||null, activatedAt: new Date().toISOString() });
         setSuccess(data.message || "Licence activée !");
-        setTimeout(()=>onActivated(), 1200);
+        setTimeout(()=>onActivated(data.type||'permanent'), 1200);
       } else {
         setError(data.error || "Code invalide");
       }
@@ -2053,6 +2053,54 @@ function LicenseModal({onClose, onActivated, lm}) {
     }
   };
 
+  // ── Écran Pionnier : propose le passage au Premium payant ──
+  if (isPionnier) {
+    return (
+      React.createElement('div', { style: {position:"fixed",inset:0,background:"rgba(0,0,0,.8)",zIndex:250,display:"flex",
+        alignItems:"flex-end",justifyContent:"center",backdropFilter:"blur(4px)"}, onClick: onClose,}
+        , React.createElement('div', { style: {background:shBg,border:`2px solid ${shBrd}`,borderRadius:"22px 22px 0 0",
+          padding:"12px 16px max(28px,env(safe-area-inset-bottom))",
+          width:"100%",maxWidth:600,maxHeight:"90dvh",overflowY:"auto"}, onClick: e=>e.stopPropagation(),}
+          , React.createElement('div', { style: {width:44,height:5,borderRadius:99,background:lm?"#e5e7eb":"rgba(255,255,255,.15)",margin:"0 auto 14px"},})
+          , React.createElement('div', { style: {textAlign:"center",marginBottom:20},}
+            , React.createElement('div', { style: {fontSize:44,marginBottom:8},}, "🚀")
+            , React.createElement('div', { style: {fontFamily:"'Fredoka One',cursive",fontSize:20,color:lm?"#1e293b":"#f5c518",marginBottom:6},}, "Vous êtes Pionnier !")
+            , React.createElement('div', { style: {fontSize:13,color:lm?"#6b7280":"rgba(255,255,255,.55)",lineHeight:1.6},},
+              "Merci d'être parmi les premiers à tester Quinéo. Votre accès pionnier vous donne le Premium gratuit pendant 30 jours."
+            )
+          )
+          , React.createElement('div', { style: {background:lm?"#f8f7ff":"rgba(245,197,24,.07)",border:`1px solid ${lm?"#e9d5ff":"rgba(245,197,24,.2)"}`,
+              borderRadius:14,padding:"14px 16px",marginBottom:16},}
+            , React.createElement('div', { style: {fontFamily:"'Fredoka One',cursive",fontSize:15,color:lm?"#7c3aed":"#f5c518",marginBottom:8},}, "✨ Passez Premium à vie")
+            , React.createElement('div', { style: {fontSize:12,color:lm?"#374151":"rgba(255,255,255,.65)",lineHeight:1.6,marginBottom:12},},
+              "Scanner illimité · Cartons sans limite · Accès à vie · Toutes les futures fonctionnalités"
+            )
+            , React.createElement('a', {
+                href: "https://buy.stripe.com/quineo-premium",
+                target: "_blank",
+                rel: "noopener noreferrer",
+                style: {display:"block",textAlign:"center",background:"linear-gradient(135deg,#7c3aed,#ec4899)",
+                  color:"#fff",fontFamily:"'Fredoka One',cursive",fontSize:16,fontWeight:700,
+                  padding:"13px 20px",borderRadius:12,textDecoration:"none",letterSpacing:.3},
+              }, "💳 Acheter Premium — 14,99€"
+            )
+          )
+          , React.createElement('div', { style: {background:lm?"#f0fdf4":"rgba(22,163,74,.08)",border:`1px solid ${lm?"#bbf7d0":"rgba(22,163,74,.2)"}`,
+              borderRadius:14,padding:"12px 16px",marginBottom:14},}
+            , React.createElement('div', { style: {fontSize:12,color:lm?"#166534":"rgba(134,239,172,.9)",lineHeight:1.6},},
+              "💡 Après votre achat, vous recevrez un code ", React.createElement('strong',null,"QUINEO-XXXX-XXXX-XXXX"),
+              " par email. Revenez ici l'entrer pour activer votre licence permanente."
+            )
+          )
+          , React.createElement('button', { style: {...ghostBs(lm),width:"100%"}, onClick: ()=>{/* basculer vers saisie code */document.getElementById('quineo-license-code-input')?.focus();},
+              onClick: onClose,}, "Fermer"
+          )
+        )
+      )
+    );
+  }
+
+  // ── Écran standard : saisie de code ──
   return (
     React.createElement('div', { style: {position:"fixed",inset:0,background:"rgba(0,0,0,.8)",zIndex:250,display:"flex",
       alignItems:"flex-end",justifyContent:"center",backdropFilter:"blur(4px)"}, onClick: onClose,}
@@ -2067,7 +2115,7 @@ function LicenseModal({onClose, onActivated, lm}) {
             "Entrez le code reçu après votre achat pour débloquer toutes les fonctionnalités."
           )
         )
-        , React.createElement('input', { type:"text", placeholder:"QUINEO-XXXX-XXXX-XXXX", value:code,
+        , React.createElement('input', { id:"quineo-license-code-input", type:"text", placeholder:"QUINEO-XXXX-XXXX-XXXX", value:code,
           onChange:e=>setCode(e.target.value.toUpperCase()),
           onKeyDown:e=>e.key==="Enter"&&activate(),
           style: {display:"block",width:"100%",textAlign:"center",letterSpacing:1.5,
@@ -2391,6 +2439,7 @@ function App() {
   const {confirm:showConfirm, Dialog:ConfirmDialog} = useConfirm();
   const [lastColor,   setLastColor]   = useState(_optionalChain([saved, 'optionalAccess', _24 => _24.lastColor])||CARD_COLORS[0]);
   const [isPremium,   setIsPremium]   = useState(()=>!!getStoredLicense()?.valid);
+  const [licenseType, setLicenseType] = useState(()=>getStoredLicense()?.type||null); // 'permanent' | 'early_adopter' | null
   const [showLicense, setShowLicense] = useState(false);
   const [showContact, setShowContact] = useState(false);
   const [showEarly,   setShowEarly]   = useState(false);
@@ -2540,10 +2589,11 @@ function App() {
                 animation:"logoPulse 3s ease-in-out infinite",flexShrink:0},}, "Quinéo")
             , !isPremium&&React.createElement('button', { onClick: ()=>setShowLicense(true),
                 style: {fontSize:9,fontWeight:800,padding:"2px 7px",borderRadius:99,cursor:"pointer",
-                  background:lm?"rgba(0,0,0,.05)":"rgba(255,255,255,.08)",
-                  border:`1px solid ${lm?"#e5e7eb":"rgba(255,255,255,.15)"}`,
-                  color:lm?"#9ca3af":"rgba(255,255,255,.4)",letterSpacing:.3,
-                  whiteSpace:"nowrap",flexShrink:0,WebkitTapHighlightColor:"transparent"},}, "Gratuit")
+                  background:licenseType==='early_adopter'?(lm?"rgba(124,58,237,.12)":"rgba(124,58,237,.25)"):(lm?"rgba(0,0,0,.05)":"rgba(255,255,255,.08)"),
+                  border:`1px solid ${licenseType==='early_adopter'?(lm?"#c4b5fd":"rgba(167,139,250,.4)"):(lm?"#e5e7eb":"rgba(255,255,255,.15)")}`,
+                  color:licenseType==='early_adopter'?(lm?"#7c3aed":"#c4b5fd"):(lm?"#9ca3af":"rgba(255,255,255,.4)"),letterSpacing:.3,
+                  whiteSpace:"nowrap",flexShrink:0,WebkitTapHighlightColor:"transparent"},},
+                licenseType==='early_adopter'?"🚀 Pionnier":"Gratuit")
           )
           /* Menu "..." */
           , React.createElement('div', { style: {position:"relative"},}
@@ -2776,7 +2826,8 @@ function App() {
         , showEarly   &&React.createElement(EarlyAdopterModal, { lm: lm, onClose: ()=>setShowEarly(false)})
         , showContact &&React.createElement(ContactModal, { lm: lm, onClose: ()=>setShowContact(false)})
         , showLicense &&React.createElement(LicenseModal, { lm: lm, onClose: ()=>setShowLicense(false),
-            onActivated: ()=>{setIsPremium(true);setShowLicense(false);},})
+            isPionnier: licenseType==='early_adopter',
+            onActivated: (type)=>{setIsPremium(true);setLicenseType(type||'permanent');setShowLicense(false);},})
         , showSettings&&React.createElement(SettingsModal, { settings: settings, onSave: saveSets, onClose: ()=>setShowSettings(false),
           onClearTokensGlobal: ()=>clearTokens(game.id),
           onDeleteCardsGlobal: async ()=>{if(await showConfirm("Supprimer TOUS les cartons ?\nCette action est irréversible.")){upd(game.id,g=>({cards:[],drawn:[]}));setWinnerIds(new Set());}},

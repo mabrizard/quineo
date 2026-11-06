@@ -36,7 +36,7 @@ async function sendPurchaseEmail(email, code, name) {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      from: 'Quinéo par La Fabrique <onboarding@resend.dev>',
+      from: 'Quinéo par La Fabrique <contact@lafabriquesurmesure.fr>',
       reply_to: 'mabrizard@gmail.com',
       to: [email],
       subject: '✨ Votre licence Quinéo Premium est prête !',

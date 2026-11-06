@@ -2191,7 +2191,14 @@ function LicenseModal({onClose, onActivated, lm, isPionnier}) {
         )
         , React.createElement('div', { style: {textAlign:"center",fontSize:11,color:lm?"#9ca3af":"rgba(255,255,255,.3)",
             paddingTop:10,borderTop:`1px solid ${lm?"#f3f4f6":"rgba(255,255,255,.06)"}`},},
-          "Pas encore de licence ? Achetez Premium pour 14,99€ — scanner illimité, cartons sans limite."
+          "Pas encore de licence ? "
+          , React.createElement('a', {
+            href: "https://buy.stripe.com/test_9B6bJ2fr9frl1k4a27gjC00",
+            target: "_blank",
+            rel: "noopener noreferrer",
+            style: {color:lm?"#7c3aed":"#c4b5fd",textDecoration:"underline",cursor:"pointer"},
+          }, "Achetez Premium — 14,99€")
+          , " — scanner illimité, cartons sans limite."
         )
       )
     )
